@@ -79,7 +79,7 @@ You need a Strava refresh token with `read` scope for a member of the club.
 
 4. Seed the refresh token into KV:
    ```sh
-   wrangler kv key put --binding=EVENT_BOT_STATE "strava:refresh_token" "REFRESH_TOKEN_FROM_STEP_3"
+   wrangler kv key put --namespace-id=YOUR_KV_NAMESPACE_ID --remote "strava:refresh_token" "REFRESH_TOKEN_FROM_STEP_3"
    ```
 
 ### 6. Deploy and seed
