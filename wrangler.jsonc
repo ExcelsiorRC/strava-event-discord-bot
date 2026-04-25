@@ -9,15 +9,15 @@
     "crons": ["0 * * * *"]
   },
   "vars": {
-    "STRAVA_CLUB_ID": "2328",
-    "STRAVA_CLUB_URL": "https://www.strava.com/clubs/excelsior-running-club",
+    "STRAVA_CLUB_ID": "YOUR_CLUB_ID",
+    "STRAVA_CLUB_URL": "https://www.strava.com/clubs/your-club-slug",
     "MODE": "test"
   },
   "kv_namespaces": [
     {
       "binding": "EVENT_BOT_STATE",
-      "id": "PLACEHOLDER",
-      "preview_id": "PLACEHOLDER"
+      "id": "YOUR_KV_NAMESPACE_ID",
+      "preview_id": "YOUR_KV_PREVIEW_NAMESPACE_ID"
     }
   ]
 }
