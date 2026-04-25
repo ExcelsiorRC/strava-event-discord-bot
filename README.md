@@ -1,10 +1,11 @@
 # Strava Event Bot
 
-Cloudflare Worker that polls the Strava API for a club's group events, computes upcoming occurrences from recurrence rules, and posts Discord embed reminders ~24 hours before each event.
+Cloudflare Worker that polls the Strava API for a club's group events, computes upcoming occurrences from recurrence rules, and posts Discord reminders.
 
 ## Features
 
-- **Hourly cron** checks for events in the next 25-hour window
+- **New event announcements** — posts to Discord when a new event is discovered on Strava
+- **24h reminders** — posts a reminder ~24 hours before each occurrence (skipped if just announced)
 - **Recurrence expansion** using Temporal API — handles weekly events, biweekly intervals, and DST transitions correctly
 - **Detail caching** in KV (24h TTL) to stay well under Strava's rate limits
 - **Test/live mode** with separate webhook channels and non-overlapping KV key spaces
@@ -44,13 +45,12 @@ cp wrangler.jsonc.example wrangler.jsonc
    }
    ```
 
-
-### 4. Set secrets
+### 3. Set secrets
 
 ```sh
 wrangler secret put STRAVA_CLIENT_ID
 wrangler secret put STRAVA_CLIENT_SECRET
-wrangler secret put SEED_SECRET        # any random string — protects the /seed endpoint
+wrangler secret put SEED_SECRET        # any random string — protects /preview and /seed
                                        # e.g. openssl rand -hex 32
 wrangler secret put DISCORD_WEBHOOK_EVENTS_TEST
 wrangler secret put DISCORD_WEBHOOK_LADIES_TEST
@@ -58,7 +58,7 @@ wrangler secret put DISCORD_WEBHOOK_EVENTS_LIVE
 wrangler secret put DISCORD_WEBHOOK_LADIES_LIVE
 ```
 
-### 5. OAuth bootstrap (one-time)
+### 4. OAuth bootstrap (one-time)
 
 You need a Strava refresh token with `read` scope for a member of the club.
 
@@ -83,22 +83,22 @@ You need a Strava refresh token with `read` scope for a member of the club.
    wrangler kv key put --namespace-id=YOUR_KV_NAMESPACE_ID --remote "strava:refresh_token" "REFRESH_TOKEN_FROM_STEP_3"
    ```
 
-### 6. Deploy and seed
+### 5. Deploy and seed
 
 ```sh
 wrangler deploy
 ```
 
-Seed to prevent the first cron from posting reminders for all currently-upcoming events:
+Seed to prevent the first cron from announcing all existing events and posting reminders:
 
 ```sh
-curl -X POST "https://strava-event-discord-bot.YOUR_SUBDOMAIN.workers.dev/seed?key=YOUR_SEED_SECRET"
+curl -X POST "https://YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev/seed?key=YOUR_SEED_SECRET"
 ```
 
-### 7. Test → Live workflow
+### 6. Test -> Live workflow
 
 1. Start with `MODE: "test"` in `wrangler.jsonc` — posts go to test Discord channels
-2. Use `/preview` to verify the bot sees the right events
+2. Use `/preview?key=YOUR_SEED_SECRET` to verify the bot sees the right events
 3. Monitor test channels for a day to confirm timing and formatting
 4. Change `MODE` to `"live"` in `wrangler.jsonc`, redeploy, and seed again
 5. Live posts go to production channels — test history is preserved separately
@@ -112,7 +112,7 @@ npm test
 # Local dev with scheduled trigger support
 npm run dev
 # Then trigger cron: curl http://localhost:8787/__scheduled
-# Or preview: curl http://localhost:8787/preview
+# Or preview: curl "http://localhost:8787/preview?key=YOUR_SEED_SECRET"
 ```
 
 ## How it works
@@ -121,16 +121,18 @@ npm run dev
 
 2. **Event discovery**: Fetches the club's event list (IDs only — the list endpoint's occurrence data is stale).
 
-3. **Detail fetch + cache**: For each event, fetches full details with a 24h KV cache. At ~259 events, this means ~11 uncached fetches per hour.
+3. **Detail fetch + cache**: For each event, fetches full details with a 24h KV cache.
 
-4. **Recurrence expansion**: For weekly events, computes occurrences using `@js-temporal/polyfill` for DST-safe wall-clock arithmetic. For non-weekly events, uses the detail endpoint's `upcoming_occurrences`.
+4. **New event announcement**: If an event ID hasn't been seen before, posts a "New Event" announcement with schedule details for recurring events. Marks any in-window occurrences as posted to avoid a duplicate reminder.
 
-5. **Dedup + post**: Checks KV for each occurrence. If not yet posted, sends a Discord embed and marks it posted with a 30-day TTL.
+5. **Recurrence expansion**: For weekly events, computes occurrences using `@js-temporal/polyfill` for DST-safe wall-clock arithmetic. For non-weekly events, uses the detail endpoint's `upcoming_occurrences`.
+
+6. **Dedup + remind**: Checks KV for each occurrence. If not yet posted, sends a Discord reminder embed and marks it posted with a 30-day TTL.
 
 ## Event routing
 
-- `women_only === true` → ladies webhook
-- Everything else → main events webhook
+- `women_only === true` -> ladies webhook
+- Everything else -> main events webhook
 - Private events are included (not filtered)
 
 ## Architecture notes
@@ -138,3 +140,4 @@ npm run dev
 - **Event IDs are strings** — some Strava IDs exceed 2^53 and would lose precision as JavaScript numbers
 - **DST safety** — all datetime math uses Temporal API, never `Date`
 - **Rate limits** — 200 req/15min, 2000/day. The 24h detail cache keeps steady-state at ~11 req/hour
+- **Endpoints are auth-gated** — `/preview` and `/seed` both require `?key=SEED_SECRET`
