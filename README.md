@@ -50,7 +50,8 @@ cp wrangler.jsonc.example wrangler.jsonc
 ```sh
 wrangler secret put STRAVA_CLIENT_ID
 wrangler secret put STRAVA_CLIENT_SECRET
-wrangler secret put SEED_SECRET
+wrangler secret put SEED_SECRET        # any random string — protects the /seed endpoint
+                                       # e.g. openssl rand -hex 32
 wrangler secret put DISCORD_WEBHOOK_EVENTS_TEST
 wrangler secret put DISCORD_WEBHOOK_LADIES_TEST
 wrangler secret put DISCORD_WEBHOOK_EVENTS_LIVE
