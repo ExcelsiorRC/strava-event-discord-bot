@@ -142,6 +142,10 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/preview") {
+      const key = url.searchParams.get("key");
+      if (key !== env.SEED_SECRET) {
+        return new Response("Forbidden", { status: 403 });
+      }
       const result = await runPipeline(env, { dryRun: true });
       return Response.json({
         would_post: result.would_post.map(summarize),
