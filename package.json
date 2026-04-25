@@ -1,0 +1,17 @@
+{
+  "name": "strava-event-discord-bot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --remote --test-scheduled",
+    "deploy": "wrangler deploy",
+    "test": "node --test --experimental-strip-types test/*.test.ts"
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "^0.5.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.81.0"
+  }
+}

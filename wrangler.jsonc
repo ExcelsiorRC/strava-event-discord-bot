@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "strava-event-discord-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-25",
+  "workers_dev": true,
+  "preview_urls": true,
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "vars": {
+    "STRAVA_CLUB_ID": "2328",
+    "STRAVA_CLUB_URL": "https://www.strava.com/clubs/excelsior-running-club",
+    "MODE": "test"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "PACER_KV",
+      "id": "PLACEHOLDER",
+      "preview_id": "PLACEHOLDER"
+    }
+  ]
+}
