@@ -134,16 +134,18 @@ describe("runPipeline", () => {
       nowOverride: "2026-04-27T13:00:00Z",
     });
 
-    // Should have 2 Discord calls: announcement + reminder
-    assert.equal(discordCalls.length, 2);
-    const firstBody = JSON.parse(discordCalls[0].body);
-    assert.ok(firstBody.embeds[0].title.startsWith("New Event:"));
-    const secondBody = JSON.parse(discordCalls[1].body);
-    assert.ok(!secondBody.embeds[0].title.startsWith("New Event:"));
+    // Only 1 Discord call: announcement (no separate reminder since just announced)
+    assert.equal(discordCalls.length, 1);
+    const body = JSON.parse(discordCalls[0].body);
+    assert.ok(body.embeds[0].title.startsWith("New Event:"));
 
     // Event should now be marked as seen
     const seen = await kv.get("seen:test:100");
     assert.equal(seen, "1");
+
+    // Occurrences should be marked as posted (so next run doesn't re-remind)
+    const posted = await kv.get("posted:test:100:2026-04-28T12:45:00Z");
+    assert.equal(posted, "1");
   });
 
   it("does not re-post for already-posted occurrences", async () => {
@@ -246,9 +248,8 @@ describe("runPipeline", () => {
       nowOverride: "2026-04-27T13:00:00Z",
     });
 
-    assert.equal(result.would_post.length, 1);
     assert.equal(discordCalls.length, 0);
-    // Posted key WAS written
+    // Posted key WAS written (via justAnnounced path)
     const posted = await kv.get(
       "posted:test:100:2026-04-28T12:45:00Z",
     );

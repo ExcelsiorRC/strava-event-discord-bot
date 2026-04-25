@@ -79,6 +79,7 @@ export async function runPipeline(
   for (const detail of details) {
     // Check if this is a newly discovered event
     const seen = await isEventSeen(env.EVENT_BOT_STATE, mode, detail.id);
+    let justAnnounced = false;
 
     if (!seen && !options.dryRun) {
       if (!options.seedMode) {
@@ -87,12 +88,21 @@ export async function runPipeline(
         await postToDiscord(webhookUrl, embed);
       }
       await markEventSeen(env.EVENT_BOT_STATE, mode, detail.id);
+      justAnnounced = true;
     }
 
     // Expand occurrences for 24h reminders
     const occurrences = expandOccurrences(detail, now);
     for (const occ of occurrences) {
       const info: OccurrenceInfo = { event: detail, occurrence: occ };
+
+      if (justAnnounced) {
+        // Just announced — skip the reminder but mark as posted
+        // so the next cron run doesn't re-remind
+        await markPosted(env.EVENT_BOT_STATE, mode, occ.eventId, occ.isoKey);
+        continue;
+      }
+
       const alreadyPosted = await isAlreadyPosted(
         env.EVENT_BOT_STATE,
         mode,
