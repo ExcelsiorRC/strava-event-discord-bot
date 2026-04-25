@@ -65,7 +65,7 @@ describe("safeParseIds", () => {
   });
 
   it("does not include nested object IDs (club, route, athlete)", () => {
-    const text = `[{"id":1111,"resource_state":2,"club":{"id":2328,"name":"Club"},"route":{"id":9999},"title":"Test"}]`;
+    const text = `[{"id":1111,"resource_state":2,"club":{"id":5555,"name":"Club"},"route":{"id":9999},"title":"Test"}]`;
     const ids = safeParseIds(text);
     // Should only get the top-level event ID
     assert.equal(ids.length, 1);
@@ -84,7 +84,7 @@ describe("fetchEventIds", () => {
       );
     });
 
-    const ids = await fetchEventIds("token123", "2328");
+    const ids = await fetchEventIds("token123", "5555");
     assert.deepEqual(ids, ["100", "200"]);
   });
 });
