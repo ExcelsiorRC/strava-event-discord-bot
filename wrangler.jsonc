@@ -15,7 +15,7 @@
   },
   "kv_namespaces": [
     {
-      "binding": "PACER_KV",
+      "binding": "EVENT_BOT_STATE",
       "id": "PLACEHOLDER",
       "preview_id": "PLACEHOLDER"
     }

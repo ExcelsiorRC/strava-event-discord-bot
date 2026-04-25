@@ -19,7 +19,7 @@ function restoreFetch() {
 
 function createEnv(kv: MemoryKV): Env {
   return {
-    PACER_KV: kv as unknown as KVNamespace,
+    EVENT_BOT_STATE: kv as unknown as KVNamespace,
     STRAVA_CLIENT_ID: "test_client",
     STRAVA_CLIENT_SECRET: "test_secret",
     STRAVA_CLUB_ID: "9999",

@@ -6,7 +6,7 @@ import { isAlreadyPosted, markPosted } from "./state.ts";
 import type { EventDetail } from "./types.ts";
 
 export interface Env {
-  PACER_KV: KVNamespace;
+  EVENT_BOT_STATE: KVNamespace;
   STRAVA_CLIENT_ID: string;
   STRAVA_CLIENT_SECRET: string;
   STRAVA_CLUB_ID: string;
@@ -53,7 +53,7 @@ export async function runPipeline(
 
   // 1. Refresh Strava token
   const accessToken = await refreshStravaToken(
-    env.PACER_KV,
+    env.EVENT_BOT_STATE,
     env.STRAVA_CLIENT_ID,
     env.STRAVA_CLIENT_SECRET,
   );
@@ -64,7 +64,7 @@ export async function runPipeline(
   // 3. Fetch details (with caching and rate-limit delay)
   const details: EventDetail[] = [];
   for (const id of eventIds) {
-    const detail = await fetchEventDetail(env.PACER_KV, accessToken, id);
+    const detail = await fetchEventDetail(env.EVENT_BOT_STATE, accessToken, id);
     details.push(detail);
     // Small delay between uncached API calls to respect rate limits
     if (!options.dryRun) {
@@ -81,7 +81,7 @@ export async function runPipeline(
     for (const occ of occurrences) {
       const info: OccurrenceInfo = { event: detail, occurrence: occ };
       const alreadyPosted = await isAlreadyPosted(
-        env.PACER_KV,
+        env.EVENT_BOT_STATE,
         mode,
         occ.eventId,
         occ.isoKey,
@@ -103,7 +103,7 @@ export async function runPipeline(
         const embed = buildEmbed(event, occurrence, env.STRAVA_CLUB_URL);
         await postToDiscord(webhookUrl, embed);
       }
-      await markPosted(env.PACER_KV, mode, occurrence.eventId, occurrence.isoKey);
+      await markPosted(env.EVENT_BOT_STATE, mode, occurrence.eventId, occurrence.isoKey);
     }
   }
 
