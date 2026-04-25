@@ -19,26 +19,26 @@ Cloudflare Worker that polls the Strava API for a club's group events, computes 
 npm install
 ```
 
-### 2. Create KV namespace
+### 2. Configure `wrangler.jsonc`
 
-```sh
-wrangler kv namespace create EVENT_BOT_STATE
-wrangler kv namespace create EVENT_BOT_STATE --preview
-```
+The checked-in `wrangler.jsonc` contains placeholder values. Update it with your deployment-specific values:
 
-Update the `id` and `preview_id` in `wrangler.jsonc` with the returned values.
+1. Create a KV namespace and fill in the IDs:
+   ```sh
+   wrangler kv namespace create EVENT_BOT_STATE
+   wrangler kv namespace create EVENT_BOT_STATE --preview
+   ```
 
-### 3. Configure variables
+2. Set your club-specific vars:
+   ```jsonc
+   "vars": {
+     "STRAVA_CLUB_ID": "YOUR_CLUB_ID",
+     "STRAVA_CLUB_URL": "https://www.strava.com/clubs/your-club-slug",
+     "MODE": "test"
+   }
+   ```
 
-Edit `wrangler.jsonc` to set your club-specific values:
-
-```jsonc
-"vars": {
-  "STRAVA_CLUB_ID": "YOUR_CLUB_ID",
-  "STRAVA_CLUB_URL": "https://www.strava.com/clubs/your-club-slug",
-  "MODE": "test"
-}
-```
+These are local changes you don't need to commit back.
 
 ### 4. Set secrets
 
