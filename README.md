@@ -21,7 +21,13 @@ npm install
 
 ### 2. Configure `wrangler.jsonc`
 
-The checked-in `wrangler.jsonc` contains placeholder values. Update it with your deployment-specific values:
+Copy the example config and fill in your values:
+
+```sh
+cp wrangler.jsonc.example wrangler.jsonc
+```
+
+`wrangler.jsonc` is gitignored so your deployment-specific values won't be committed.
 
 1. Create a KV namespace and fill in the IDs:
    ```sh
@@ -38,7 +44,6 @@ The checked-in `wrangler.jsonc` contains placeholder values. Update it with your
    }
    ```
 
-These are local changes you don't need to commit back.
 
 ### 4. Set secrets
 

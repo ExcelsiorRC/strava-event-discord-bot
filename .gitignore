@@ -1,5 +1,7 @@
 .dev.vars
 !.dev.vars.example
+wrangler.jsonc
+!wrangler.jsonc.example
 node_modules/
 .wrangler/
 dist/
