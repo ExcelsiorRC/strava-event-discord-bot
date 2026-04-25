@@ -1,8 +1,8 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { refreshStravaToken, fetchEventIds, fetchEventDetail } from "./strava.ts";
 import { expandOccurrences, type Occurrence } from "./recurrence.ts";
-import { buildEmbed, postToDiscord, getWebhookUrl } from "./discord.ts";
-import { isAlreadyPosted, markPosted } from "./state.ts";
+import { buildEmbed, buildAnnouncementEmbed, postToDiscord, getWebhookUrl } from "./discord.ts";
+import { isAlreadyPosted, markPosted, isEventSeen, markEventSeen } from "./state.ts";
 import type { EventDetail } from "./types.ts";
 
 export interface Env {
@@ -72,11 +72,24 @@ export async function runPipeline(
     }
   }
 
-  // 4. Expand occurrences and categorize
+  // 4. Announce new events + expand occurrences
   const wouldPost: OccurrenceInfo[] = [];
   const skippedAlreadyPosted: OccurrenceInfo[] = [];
 
   for (const detail of details) {
+    // Check if this is a newly discovered event
+    const seen = await isEventSeen(env.EVENT_BOT_STATE, mode, detail.id);
+
+    if (!seen && !options.dryRun) {
+      if (!options.seedMode) {
+        const webhookUrl = getWebhookUrl(env, detail, mode);
+        const embed = buildAnnouncementEmbed(detail, env.STRAVA_CLUB_URL);
+        await postToDiscord(webhookUrl, embed);
+      }
+      await markEventSeen(env.EVENT_BOT_STATE, mode, detail.id);
+    }
+
+    // Expand occurrences for 24h reminders
     const occurrences = expandOccurrences(detail, now);
     for (const occ of occurrences) {
       const info: OccurrenceInfo = { event: detail, occurrence: occ };
@@ -95,7 +108,7 @@ export async function runPipeline(
     }
   }
 
-  // 5. Post to Discord (unless dry run)
+  // 5. Post reminders to Discord (unless dry run)
   if (!options.dryRun) {
     for (const { event, occurrence } of wouldPost) {
       if (!options.seedMode) {

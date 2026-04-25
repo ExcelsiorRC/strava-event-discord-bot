@@ -68,9 +68,10 @@ const TOKEN_RESPONSE = JSON.stringify({
 describe("runPipeline", () => {
   afterEach(() => restoreFetch());
 
-  it("posts to Discord for an occurrence in the 25h window", async () => {
+  it("posts reminder for a known event with occurrence in window", async () => {
     const kv = new MemoryKV();
     await kv.put("strava:refresh_token", "initial_refresh");
+    await kv.put("seen:test:100", "1"); // already seen
     const env = createEnv(kv);
     const discordCalls: { url: string; body: string }[] = [];
 
@@ -91,28 +92,65 @@ describe("runPipeline", () => {
       return new Response("Not found", { status: 404 });
     });
 
-    // Monday 2026-04-27 06:00 LA = 2026-04-27T13:00:00Z
     const result = await runPipeline(env, {
       nowOverride: "2026-04-27T13:00:00Z",
     });
 
     assert.equal(result.would_post.length, 1);
-    assert.equal(result.skipped_already_posted.length, 0);
     assert.equal(discordCalls.length, 1);
-    assert.equal(discordCalls[0].url, "https://discord.test/events");
+    // Should be a reminder, not an announcement
+    const body = JSON.parse(discordCalls[0].body);
+    assert.ok(!body.embeds[0].title.startsWith("New Event:"));
 
-    // Verify posted key was written
-    const posted = await kv.get(
-      "posted:test:100:2026-04-28T12:45:00Z",
-    );
+    const posted = await kv.get("posted:test:100:2026-04-28T12:45:00Z");
     assert.equal(posted, "1");
+  });
+
+  it("posts announcement for a newly discovered event", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    // NOT marking as seen — this is a new event
+    const env = createEnv(kv);
+    const discordCalls: { url: string; body: string }[] = [];
+
+    mockFetch(async (url: string, init?: RequestInit) => {
+      if (url.includes("/oauth/token")) {
+        return new Response(TOKEN_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(LIST_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/group_events/100")) {
+        return new Response(DETAIL_RESPONSE, { status: 200 });
+      }
+      if (url.includes("discord.test")) {
+        discordCalls.push({ url, body: init?.body as string });
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runPipeline(env, {
+      nowOverride: "2026-04-27T13:00:00Z",
+    });
+
+    // Should have 2 Discord calls: announcement + reminder
+    assert.equal(discordCalls.length, 2);
+    const firstBody = JSON.parse(discordCalls[0].body);
+    assert.ok(firstBody.embeds[0].title.startsWith("New Event:"));
+    const secondBody = JSON.parse(discordCalls[1].body);
+    assert.ok(!secondBody.embeds[0].title.startsWith("New Event:"));
+
+    // Event should now be marked as seen
+    const seen = await kv.get("seen:test:100");
+    assert.equal(seen, "1");
   });
 
   it("does not re-post for already-posted occurrences", async () => {
     const kv = new MemoryKV();
     await kv.put("strava:refresh_token", "initial_refresh");
-    // Pre-mark as posted
-    await kv.put("posted:test:100:2026-04-28T12:45:00Z", "1");
+    await kv.put("seen:test:100", "1"); // already seen
+    await kv.put("posted:test:100:2026-04-28T12:45:00Z", "1"); // already posted
     const env = createEnv(kv);
     const discordCalls: string[] = [];
 
@@ -145,6 +183,7 @@ describe("runPipeline", () => {
   it("dry run mode does not post or write KV", async () => {
     const kv = new MemoryKV();
     await kv.put("strava:refresh_token", "initial_refresh");
+    await kv.put("seen:test:100", "1"); // already seen
     const env = createEnv(kv);
     const discordCalls: string[] = [];
 
@@ -214,5 +253,8 @@ describe("runPipeline", () => {
       "posted:test:100:2026-04-28T12:45:00Z",
     );
     assert.equal(posted, "1");
+    // Event marked as seen
+    const seen = await kv.get("seen:test:100");
+    assert.equal(seen, "1");
   });
 });

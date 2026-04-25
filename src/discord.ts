@@ -3,6 +3,7 @@ import type { Occurrence } from "./recurrence.ts";
 
 const COLOR_GENERAL = 0x5865f2; // Discord blurple
 const COLOR_WOMEN = 0xff7f50; // Coral
+const COLOR_NEW = 0x57f287; // Green
 const MAX_DESC_LEN = 400;
 const BOT_USERNAME = "Event Bot";
 
@@ -54,6 +55,56 @@ export function buildEmbed(
     url: `${clubUrl}/group_events/${event.id}`,
     description,
     color: event.women_only ? COLOR_WOMEN : COLOR_GENERAL,
+    fields,
+    footer: { text: footer },
+    author: { name: "Strava Club Events", url: clubUrl },
+  };
+}
+
+const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+function formatSchedule(event: EventDetail): string | null {
+  if (event.frequency !== "weekly" || !event.days_of_week?.length) return null;
+  const days = event.days_of_week
+    .slice()
+    .sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
+    .map((d) => d.charAt(0).toUpperCase() + d.slice(1));
+  const time = event.start_datetime?.split("T")[1] ?? "";
+  const interval = event.weekly_interval && event.weekly_interval > 1
+    ? `Every ${event.weekly_interval} weeks on `
+    : "Weekly on ";
+  return `${interval}${days.join(", ")}${time ? ` at ${time}` : ""}`;
+}
+
+export function buildAnnouncementEmbed(
+  event: EventDetail,
+  clubUrl: string,
+): DiscordEmbed {
+  let description = event.description ?? "";
+  if (description.length > MAX_DESC_LEN) {
+    description = description.slice(0, MAX_DESC_LEN) + "[...]";
+  }
+
+  const fields: DiscordField[] = [];
+
+  const schedule = formatSchedule(event);
+  if (schedule) {
+    fields.push({ name: "Schedule", value: schedule });
+  }
+
+  if (event.address) {
+    fields.push({ name: "Where", value: event.address });
+  }
+
+  const footer = event.organizing_athlete
+    ? `${event.organizing_athlete.firstname} ${event.organizing_athlete.lastname}`
+    : "";
+
+  return {
+    title: `New Event: ${event.title}`,
+    url: `${clubUrl}/group_events/${event.id}`,
+    description,
+    color: event.women_only ? COLOR_WOMEN : COLOR_NEW,
     fields,
     footer: { text: footer },
     author: { name: "Strava Club Events", url: clubUrl },

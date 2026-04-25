@@ -6,8 +6,11 @@ import { MemoryKV } from "./helpers.ts";
 import {
   postedKey,
   cacheDetailKey,
+  seenKey,
   isAlreadyPosted,
   markPosted,
+  isEventSeen,
+  markEventSeen,
 } from "../src/state.ts";
 
 describe("postedKey", () => {
@@ -67,5 +70,46 @@ describe("markPosted", () => {
       "2026-04-28T12:45:00Z",
     );
     assert.equal(kv.has("posted:test:123:2026-04-28T12:45:00Z"), true);
+  });
+});
+
+describe("seenKey", () => {
+  it("builds correct seen key", () => {
+    assert.equal(seenKey("test", "9990001"), "seen:test:9990001");
+  });
+});
+
+describe("isEventSeen", () => {
+  it("returns false when event has not been seen", async () => {
+    const kv = new MemoryKV();
+    const result = await isEventSeen(
+      kv as unknown as KVNamespace,
+      "test",
+      "9990001",
+    );
+    assert.equal(result, false);
+  });
+
+  it("returns true when event has been seen", async () => {
+    const kv = new MemoryKV();
+    await kv.put("seen:test:9990001", "1");
+    const result = await isEventSeen(
+      kv as unknown as KVNamespace,
+      "test",
+      "9990001",
+    );
+    assert.equal(result, true);
+  });
+});
+
+describe("markEventSeen", () => {
+  it("writes seen key to KV", async () => {
+    const kv = new MemoryKV();
+    await markEventSeen(
+      kv as unknown as KVNamespace,
+      "test",
+      "9990001",
+    );
+    assert.equal(kv.has("seen:test:9990001"), true);
   });
 });

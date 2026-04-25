@@ -1,8 +1,8 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Temporal } from "@js-temporal/polyfill";
-import { weeklyTueFri, womenOnlyWeekly } from "./fixtures.ts";
-import { buildEmbed, getWebhookUrl } from "../src/discord.ts";
+import { weeklyTueFri, womenOnlyWeekly, noFrequency } from "./fixtures.ts";
+import { buildEmbed, buildAnnouncementEmbed, getWebhookUrl } from "../src/discord.ts";
 import type { Occurrence } from "../src/recurrence.ts";
 
 function makeOccurrence(
@@ -83,6 +83,43 @@ describe("buildEmbed", () => {
     );
     assert.ok(whereField);
     assert.equal(whereField.value, "(37.77, -122.46)");
+  });
+});
+
+describe("buildAnnouncementEmbed", () => {
+  it("builds announcement for a weekly recurring event", () => {
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    assert.equal(embed.title, "New Event: Morning Group Run");
+    assert.match(embed.url, /test-club\/group_events\/9990001/);
+    assert.equal(embed.color, 0x57f287); // green
+    const scheduleField = embed.fields.find(
+      (f: { name: string }) => f.name === "Schedule",
+    );
+    assert.ok(scheduleField);
+    assert.match(scheduleField.value, /tuesday/i);
+    assert.match(scheduleField.value, /friday/i);
+  });
+
+  it("builds announcement for a non-recurring event", () => {
+    const embed = buildAnnouncementEmbed(noFrequency, TEST_CLUB_URL);
+    assert.equal(embed.title, "New Event: One-Off Trail Run");
+    const scheduleField = embed.fields.find(
+      (f: { name: string }) => f.name === "Schedule",
+    );
+    assert.equal(scheduleField, undefined);
+  });
+
+  it("uses coral for women-only announcement", () => {
+    const embed = buildAnnouncementEmbed(womenOnlyWeekly, TEST_CLUB_URL);
+    assert.equal(embed.color, 0xff7f50);
+  });
+
+  it("includes Where field when address is present", () => {
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    const whereField = embed.fields.find(
+      (f: { name: string }) => f.name === "Where",
+    );
+    assert.ok(whereField);
   });
 });
 
