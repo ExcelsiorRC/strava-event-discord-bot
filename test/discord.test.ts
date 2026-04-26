@@ -115,6 +115,35 @@ describe("buildAnnouncementEmbed", () => {
     assert.equal(embed.color, 0xff7f50);
   });
 
+  it("includes a When field with the next occurrence as a Discord timestamp", () => {
+    const embed = buildAnnouncementEmbed(noFrequency, TEST_CLUB_URL);
+    const whenField = embed.fields.find(
+      (f: { name: string }) => f.name === "When",
+    );
+    assert.ok(whenField);
+    // noFrequency has upcoming_occurrences[0] = "2026-04-27T17:00:00Z" → 1777309200
+    const unix = Math.floor(
+      new Date("2026-04-27T17:00:00Z").getTime() / 1000,
+    );
+    assert.match(whenField.value, new RegExp(`<t:${unix}:F>`));
+    assert.match(whenField.value, new RegExp(`<t:${unix}:R>`));
+  });
+
+  it("weekly events show both Schedule and When (next occurrence)", () => {
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    const schedule = embed.fields.find((f) => f.name === "Schedule");
+    const when = embed.fields.find((f) => f.name === "When");
+    assert.ok(schedule, "Schedule should still be there for recurring events");
+    assert.ok(when, "Weekly events should also show next occurrence");
+  });
+
+  it("no When field when upcoming_occurrences is empty", () => {
+    const noOcc = { ...noFrequency, upcoming_occurrences: [] };
+    const embed = buildAnnouncementEmbed(noOcc, TEST_CLUB_URL);
+    const when = embed.fields.find((f) => f.name === "When");
+    assert.equal(when, undefined);
+  });
+
   it("includes Where field when address is present", () => {
     const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
     const whereField = embed.fields.find(
