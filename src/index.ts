@@ -94,7 +94,22 @@ export async function runPipeline(
   // the original start_datetime, not the next occurrence) — so we can't
   // filter at this stage without dropping legitimate weekly events. The
   // calendar feed handles per-occurrence freshness at render time.
-  const allEvents = await fetchEvents(accessToken, env.STRAVA_CLUB_ID);
+  // If Strava rate-limits the list call, exit gracefully so the next cron
+  // can try again — better than crashing with an unhandled rejection.
+  let allEvents;
+  try {
+    allEvents = await fetchEvents(accessToken, env.STRAVA_CLUB_ID);
+  } catch (e) {
+    if (e instanceof RateLimitedError) {
+      console.warn(`Strava rate limit on list endpoint; skipping this run`);
+      return {
+        would_post: [],
+        skipped_already_posted: [],
+        skipped_outside_window: [],
+      };
+    }
+    throw e;
+  }
   const currentStravaIds = new Set(allEvents.map((e) => e.id));
   const eventIds = allEvents.map((e) => e.id);
 
