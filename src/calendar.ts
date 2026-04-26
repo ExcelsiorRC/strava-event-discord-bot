@@ -166,6 +166,7 @@ export interface VCalendarParts {
 }
 
 export const CLUB_SNAPSHOT_KEY = "calendar:club:snapshot";
+export const CALENDAR_VERSION_KEY = "calendar:version";
 
 export async function writeClubSnapshot(
   kv: KVNamespace,
@@ -174,12 +175,56 @@ export async function writeClubSnapshot(
   await kv.put(CLUB_SNAPSHOT_KEY, JSON.stringify(events));
 }
 
+/**
+ * Sticky merge with deletion detection: keep existing snapshot entries that
+ * are still on Strava (so events aged out of the recency filter persist with
+ * their last-known data), overwrite with freshly-fetched details, and drop
+ * anything not in the current Strava list (a deleted event should disappear
+ * from members' calendars too).
+ *
+ * Returns true iff the merged snapshot differs from what's already in KV
+ * (and was therefore written + version bumped). Sorted by id for a
+ * deterministic comparison regardless of Strava's response order.
+ */
+export async function persistClubSnapshot(
+  kv: KVNamespace,
+  fetchedDetails: EventDetail[],
+  currentStravaIds: Set<string>,
+): Promise<boolean> {
+  const existing = await readClubSnapshot(kv);
+  const map = new Map<string, EventDetail>();
+  for (const e of existing) {
+    if (currentStravaIds.has(e.id)) map.set(e.id, e);
+  }
+  for (const e of fetchedDetails) {
+    map.set(e.id, e);
+  }
+  const merged = [...map.values()].sort((a, b) => a.id.localeCompare(b.id));
+  const newJson = JSON.stringify(merged);
+  const oldJson = await kv.get(CLUB_SNAPSHOT_KEY);
+  if (newJson === oldJson) return false;
+  await kv.put(CLUB_SNAPSHOT_KEY, newJson);
+  await bumpCalendarVersion(kv);
+  return true;
+}
+
 export async function readClubSnapshot(
   kv: KVNamespace,
 ): Promise<EventDetail[]> {
   const raw = await kv.get(CLUB_SNAPSHOT_KEY);
   if (!raw) return [];
   return JSON.parse(raw) as EventDetail[];
+}
+
+export async function bumpCalendarVersion(kv: KVNamespace): Promise<void> {
+  await kv.put(
+    CALENDAR_VERSION_KEY,
+    String(Temporal.Now.instant().epochMilliseconds),
+  );
+}
+
+export async function getCalendarVersion(kv: KVNamespace): Promise<string> {
+  return (await kv.get(CALENDAR_VERSION_KEY)) ?? "0";
 }
 
 export function buildVCalendar(parts: VCalendarParts): string {

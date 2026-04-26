@@ -4,9 +4,12 @@ import { MemoryKV } from "./helpers.ts";
 import {
   refreshStravaToken,
   fetchEventIds,
+  fetchEvents,
   fetchEventDetail,
   safeParseIds,
+  filterRecentEvents,
 } from "../src/strava.ts";
+import { Temporal } from "@js-temporal/polyfill";
 
 // Save/restore global fetch
 let originalFetch: typeof globalThis.fetch;
@@ -102,6 +105,70 @@ describe("safeParseIds", () => {
   it("handles unquoted 19-digit IDs from real Strava responses", () => {
     const text = `[{"id":100,"title":"A"},{"id":3482146135682753450,"title":"B"},{"id":200,"title":"C"}]`;
     assert.deepEqual(safeParseIds(text), ["100", "3482146135682753450", "200"]);
+  });
+});
+
+describe("fetchEvents", () => {
+  afterEach(() => restoreFetch());
+
+  it("returns id + upcoming_occurrences for each list item", async () => {
+    mockFetch(async () => {
+      return new Response(
+        JSON.stringify([
+          { id: 100, title: "A", upcoming_occurrences: ["2026-05-01T10:00:00Z"] },
+          { id: 200, title: "B", upcoming_occurrences: [] },
+          { id: 300, title: "C", upcoming_occurrences: ["2022-01-01T10:00:00Z", "2022-01-08T10:00:00Z"] },
+        ]),
+        { status: 200 },
+      );
+    });
+
+    const events = await fetchEvents("token", "5555");
+    assert.equal(events.length, 3);
+    assert.equal(events[0].id, "100");
+    assert.deepEqual(events[0].upcoming_occurrences, ["2026-05-01T10:00:00Z"]);
+    assert.deepEqual(events[1].upcoming_occurrences, []);
+  });
+});
+
+describe("filterRecentEvents", () => {
+  const now = Temporal.Instant.from("2026-04-26T00:00:00Z");
+
+  it("keeps events with any occurrence within the window", () => {
+    const events = [
+      { id: "1", upcoming_occurrences: ["2026-05-01T10:00:00Z"] }, // future
+      { id: "2", upcoming_occurrences: ["2026-04-01T10:00:00Z"] }, // last month
+      { id: "3", upcoming_occurrences: ["2025-11-01T10:00:00Z"] }, // ~6mo back, in window
+    ];
+    const ids = filterRecentEvents(events, now, 6).map((e) => e.id);
+    assert.deepEqual(ids, ["1", "2", "3"]);
+  });
+
+  it("drops events whose latest occurrence is older than the window", () => {
+    const events = [
+      { id: "old", upcoming_occurrences: ["2022-06-05T15:00:00Z"] },
+      { id: "very-old", upcoming_occurrences: ["2023-04-12T14:00:00Z"] },
+      { id: "recent", upcoming_occurrences: ["2026-03-01T10:00:00Z"] },
+    ];
+    const ids = filterRecentEvents(events, now, 6).map((e) => e.id);
+    assert.deepEqual(ids, ["recent"]);
+  });
+
+  it("drops events with no upcoming_occurrences (no signal of recency)", () => {
+    const events = [
+      { id: "empty", upcoming_occurrences: [] },
+      { id: "active", upcoming_occurrences: ["2026-04-20T10:00:00Z"] },
+    ];
+    const ids = filterRecentEvents(events, now, 6).map((e) => e.id);
+    assert.deepEqual(ids, ["active"]);
+  });
+
+  it("uses the latest occurrence when there are multiple", () => {
+    const events = [
+      { id: "mixed", upcoming_occurrences: ["2022-01-01T10:00:00Z", "2026-04-25T10:00:00Z"] },
+    ];
+    const ids = filterRecentEvents(events, now, 6).map((e) => e.id);
+    assert.deepEqual(ids, ["mixed"]);
   });
 });
 
