@@ -11,7 +11,13 @@
   "vars": {
     "STRAVA_CLUB_ID": "YOUR_CLUB_ID",
     "STRAVA_CLUB_URL": "https://www.strava.com/clubs/your-club-slug",
-    "MODE": "test"
+    "MODE": "test",
+    // Optional: external ICS feeds merged into /calendar.ics.
+    // Each entry: { token, name, url }. `token` is the ?include= filter
+    // and the CATEGORIES tag on each merged event.
+    "EXTERNAL_CALENDARS": [
+      // { "token": "road", "name": "PA Road Racing", "url": "https://calendar.google.com/calendar/ical/CAL_ID/public/basic.ics" }
+    ]
   },
   "kv_namespaces": [
     {

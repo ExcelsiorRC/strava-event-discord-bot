@@ -258,4 +258,64 @@ describe("runPipeline", () => {
     const seen = await kv.get("seen:test:100");
     assert.equal(seen, "1");
   });
+
+  it("writes a club snapshot to KV after fetching event details", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    await kv.put("seen:test:100", "1");
+    const env = createEnv(kv);
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) {
+        return new Response(TOKEN_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(LIST_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/group_events/100")) {
+        return new Response(DETAIL_RESPONSE, { status: 200 });
+      }
+      if (url.includes("discord.test")) {
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+
+    const snapshot = await kv.get("calendar:club:snapshot");
+    assert.ok(snapshot, "expected snapshot to be written");
+    const events = JSON.parse(snapshot!) as { id: string; title: string }[];
+    assert.equal(events.length, 1);
+    assert.equal(events[0].id, "100");
+    assert.equal(events[0].title, "Weekly Run");
+  });
+
+  it("dry run does not write snapshot", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    await kv.put("seen:test:100", "1");
+    const env = createEnv(kv);
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) {
+        return new Response(TOKEN_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(LIST_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/group_events/100")) {
+        return new Response(DETAIL_RESPONSE, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, {
+      dryRun: true,
+      nowOverride: "2026-04-27T13:00:00Z",
+    });
+
+    const snapshot = await kv.get("calendar:club:snapshot");
+    assert.equal(snapshot, null);
+  });
 });
