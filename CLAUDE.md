@@ -19,6 +19,11 @@ This repository is a Cloudflare Worker that polls Strava for club group events a
 - `women_only` events route to the ladies webhook; everything else to the main webhook
 - Strava refresh tokens rotate on every refresh — persist to KV before any other work
 - The list endpoint's `upcoming_occurrences` is stale — only use detail endpoint data
+- Recency filter (`RECENT_EVENT_MONTHS=6`) gates which IDs we fetch detail for; the full Strava list is still the source of truth for "what exists"
+- Snapshot is sticky: aged-out events stay in the calendar feed; events deleted from Strava get dropped
+- `calendar:version` is bumped only when snapshot content actually changes (sorted-by-id JSON compare); cache key includes the version
+- Per-run budget: `MAX_API_CALLS_PER_RUN=30` uncached fetches in `FETCH_CONCURRENCY=5`-wide batches
+- Workers Standard plan is required (the Free plan's 50-subrequest cap can't fit a ~250-event club); update wrangler.jsonc only to lower limits, defaults are sufficient
 
 ## Editing guidance
 
