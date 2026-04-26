@@ -111,6 +111,22 @@ describe("clubEventVEvents — weekly events", () => {
     });
     assert.equal(findLine(blocks[0], "CATEGORIES:"), "CATEGORIES:club");
   });
+
+  it("prefixes women_only event titles with a marker so they're visible everywhere", () => {
+    const blocks = clubEventVEvents(womenOnlyWeekly, {
+      clubUrl: CLUB_URL,
+      nowUtc: FIXED_NOW,
+    });
+    assert.equal(findLine(blocks[0], "SUMMARY:"), "SUMMARY:🚺 Women's Run");
+  });
+
+  it("does not prefix non-women-only events", () => {
+    const blocks = clubEventVEvents(weeklyTueFri, {
+      clubUrl: CLUB_URL,
+      nowUtc: FIXED_NOW,
+    });
+    assert.equal(findLine(blocks[0], "SUMMARY:"), "SUMMARY:Morning Group Run");
+  });
 });
 
 describe("clubEventVEvents — one-off events", () => {

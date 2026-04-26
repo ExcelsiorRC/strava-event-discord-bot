@@ -1,5 +1,10 @@
 import { Temporal } from "@js-temporal/polyfill";
-import { refreshStravaToken, fetchEventIds, fetchEventDetail } from "./strava.ts";
+import {
+  refreshStravaToken,
+  fetchEventIds,
+  fetchEventDetail,
+  RateLimitedError,
+} from "./strava.ts";
 import { expandOccurrences, type Occurrence } from "./recurrence.ts";
 import { buildEmbed, buildAnnouncementEmbed, postToDiscord, getWebhookUrl } from "./discord.ts";
 import { isAlreadyPosted, markPosted, isEventSeen, markEventSeen } from "./state.ts";
@@ -32,6 +37,7 @@ export interface Env {
   DISCORD_WEBHOOK_EVENTS_LIVE: string;
   DISCORD_WEBHOOK_LADIES_LIVE: string;
   EXTERNAL_CALENDARS?: ExternalCalendar[];
+  CALENDAR_KEY?: string;
 }
 
 interface OccurrenceInfo {
@@ -76,12 +82,24 @@ export async function runPipeline(
   // 2. Discover event IDs
   const eventIds = await fetchEventIds(accessToken, env.STRAVA_CLUB_ID);
 
-  // 3. Fetch details (with caching and rate-limit delay)
+  // 3. Fetch details (with caching and rate-limit delay).
+  // On 429 we break gracefully and keep the partial set — the next cron run
+  // picks up where we left off as cache fills.
   const details: EventDetail[] = [];
   for (const id of eventIds) {
-    const detail = await fetchEventDetail(env.EVENT_BOT_STATE, accessToken, id);
+    let detail: EventDetail;
+    try {
+      detail = await fetchEventDetail(env.EVENT_BOT_STATE, accessToken, id);
+    } catch (e) {
+      if (e instanceof RateLimitedError) {
+        console.warn(
+          `Rate limited at event ${id}, processed ${details.length}/${eventIds.length} so far`,
+        );
+        break;
+      }
+      throw e;
+    }
     details.push(detail);
-    // Small delay between uncached API calls to respect rate limits
     if (!options.dryRun) {
       await sleep(FETCH_DELAY_MS);
     }
@@ -178,6 +196,12 @@ export default {
       (request.method === "GET" || request.method === "HEAD") &&
       url.pathname === "/calendar.ics"
     ) {
+      if (
+        !env.CALENDAR_KEY ||
+        url.searchParams.get("key") !== env.CALENDAR_KEY
+      ) {
+        return new Response("Forbidden", { status: 403 });
+      }
       const res = await handleCalendar(env, url);
       return request.method === "HEAD"
         ? new Response(null, { status: res.status, headers: res.headers })

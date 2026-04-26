@@ -30,7 +30,7 @@ const MUT_ICS =
   "END:VEVENT\r\n" +
   "END:VCALENDAR\r\n";
 
-function createEnv(kv: MemoryKV): Env {
+function createEnv(kv: MemoryKV, calendarKey = "cal-secret-xyz"): Env {
   return {
     EVENT_BOT_STATE: kv as unknown as KVNamespace,
     STRAVA_CLIENT_ID: "test",
@@ -39,6 +39,7 @@ function createEnv(kv: MemoryKV): Env {
     STRAVA_CLUB_URL: "https://www.strava.com/clubs/test-club",
     MODE: "test",
     SEED_SECRET: "seed123",
+    CALENDAR_KEY: calendarKey,
     DISCORD_WEBHOOK_EVENTS_TEST: "https://discord.test/events",
     DISCORD_WEBHOOK_LADIES_TEST: "https://discord.test/ladies",
     DISCORD_WEBHOOK_EVENTS_LIVE: "https://discord.live/events",
@@ -49,6 +50,8 @@ function createEnv(kv: MemoryKV): Env {
     ],
   };
 }
+
+const KEY = "cal-secret-xyz";
 
 let originalFetch: typeof globalThis.fetch;
 function mockFetch(handler: (url: string) => Promise<Response>) {
@@ -82,7 +85,7 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz"),
       createEnv(kv),
       ctx,
     );
@@ -97,7 +100,7 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz"),
       createEnv(kv),
       ctx,
     );
@@ -114,7 +117,7 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics?include=club"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=club"),
       createEnv(kv),
       ctx,
     );
@@ -128,7 +131,7 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics?include=road"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=road"),
       createEnv(kv),
       ctx,
     );
@@ -142,7 +145,7 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics?include=bogus"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=bogus"),
       createEnv(kv),
       ctx,
     );
@@ -153,7 +156,7 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     // no snapshot seeded
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics?include=club"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=club"),
       createEnv(kv),
       ctx,
     );
@@ -176,12 +179,12 @@ describe("GET /calendar.ics", () => {
     });
 
     await worker.fetch(
-      new Request("https://x/calendar.ics?include=road"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=road"),
       createEnv(kv),
       ctx,
     );
     await worker.fetch(
-      new Request("https://x/calendar.ics?include=road"),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=road"),
       createEnv(kv),
       ctx,
     );
@@ -192,7 +195,7 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics", { method: "HEAD" }),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz", { method: "HEAD" }),
       createEnv(kv),
       ctx,
     );
@@ -206,18 +209,51 @@ describe("GET /calendar.ics", () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
-      new Request("https://x/calendar.ics?include=bogus", { method: "HEAD" }),
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=bogus", { method: "HEAD" }),
       createEnv(kv),
       ctx,
     );
     assert.equal(res.status, 400);
   });
 
-  it("sets a Cache-Control header for client/CDN caching", async () => {
+  it("returns 403 when key query param is missing", async () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
     const res = await worker.fetch(
       new Request("https://x/calendar.ics"),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 403);
+  });
+
+  it("returns 403 when key is wrong", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request("https://x/calendar.ics?key=wrong"),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 403);
+  });
+
+  it("HEAD request also requires the key", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request("https://x/calendar.ics", { method: "HEAD" }),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 403);
+  });
+
+  it("sets a Cache-Control header for client/CDN caching", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request("https://x/calendar.ics?key=cal-secret-xyz"),
       createEnv(kv),
       ctx,
     );
