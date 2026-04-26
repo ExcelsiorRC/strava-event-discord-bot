@@ -174,8 +174,14 @@ export default {
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/calendar.ics") {
-      return handleCalendar(env, url);
+    if (
+      (request.method === "GET" || request.method === "HEAD") &&
+      url.pathname === "/calendar.ics"
+    ) {
+      const res = await handleCalendar(env, url);
+      return request.method === "HEAD"
+        ? new Response(null, { status: res.status, headers: res.headers })
+        : res;
     }
 
     if (request.method === "POST" && url.pathname === "/seed") {

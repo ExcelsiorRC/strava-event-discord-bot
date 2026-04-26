@@ -188,6 +188,31 @@ describe("GET /calendar.ics", () => {
     assert.equal(externalCalls, 1);
   });
 
+  it("HEAD request returns 200 + headers but empty body", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request("https://x/calendar.ics", { method: "HEAD" }),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type") ?? "", /text\/calendar/);
+    const body = await res.text();
+    assert.equal(body, "", "HEAD response must have an empty body");
+  });
+
+  it("HEAD request validates include tokens (400 on bogus)", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request("https://x/calendar.ics?include=bogus", { method: "HEAD" }),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 400);
+  });
+
   it("sets a Cache-Control header for client/CDN caching", async () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
