@@ -27,3 +27,4 @@ This repository is a Cloudflare Worker that polls Strava for club group events a
 - `wrangler.jsonc` is gitignored; `wrangler.jsonc.example` is the committed template
 - `samples/` is gitignored — contains private club data, never commit
 - If CI behavior changes, keep `.github/workflows/ci.yml` aligned with `npm test`
+- Do not add `Co-Authored-By` trailers (or any AI-attribution footer) to commit messages
