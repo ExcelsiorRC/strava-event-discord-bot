@@ -65,19 +65,19 @@ interface PipelineOptions {
   nowOverride?: string; // ISO instant for testing
 }
 
-const FETCH_DELAY_MS = 50;
 // Cap API calls per run so each cron tick completes within Worker time limits.
 // Cache hits don't count. With this cap the cache fully warms over a few cycles.
 const MAX_API_CALLS_PER_RUN = 30;
+// Run uncached detail fetches this many at a time. Strava's rate limit is
+// ~13 req/sec sustained so 5-wide bursts are well within bounds, and
+// parallelism keeps the loop's wall time under the 30s HTTP cap so /preview
+// and /seed actually return.
+const FETCH_CONCURRENCY = 5;
 // Drop events whose latest known occurrence is older than this. Strava clubs
 // accumulate years of dead one-off events; filtering at the list stage keeps
 // the per-run working set small and the calendar feed focused on what members
 // might actually attend.
 const RECENT_EVENT_MONTHS = 6;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export async function runPipeline(
   env: Env,
@@ -105,38 +105,46 @@ export async function runPipeline(
   );
 
   // 3. Fetch details. Read all cache entries in parallel (sequential KV.gets
-  // for hundreds of events can blow the Worker wall-time limit on their own).
-  // Then sequentially fetch the uncached ones, capped by the per-run budget so
-  // each cron tick finishes. On 429, break with the partial set we have.
+  // for hundreds of events would blow the wall-time limit on their own).
+  // Take the cache misses up to MAX_API_CALLS_PER_RUN and fetch them in
+  // FETCH_CONCURRENCY-wide batches. On 429 anywhere in a batch, stop kicking
+  // off new ones and keep what already succeeded — the next cron picks up
+  // from the cache it built.
   const cachedRaws = await Promise.all(
     eventIds.map((id) => env.EVENT_BOT_STATE.get(cacheDetailKey(id))),
   );
   const details: EventDetail[] = [];
-  let apiCalls = 0;
+  const idsToFetch: string[] = [];
   for (let i = 0; i < eventIds.length; i++) {
-    const id = eventIds[i];
     const cached = cachedRaws[i];
     if (cached) {
       details.push(JSON.parse(cached) as EventDetail);
-      continue;
+    } else {
+      idsToFetch.push(eventIds[i]);
     }
-    if (apiCalls >= MAX_API_CALLS_PER_RUN) continue;
-    let detail: EventDetail;
-    try {
-      detail = await fetchEventDetail(env.EVENT_BOT_STATE, accessToken, id);
-    } catch (e) {
-      if (e instanceof RateLimitedError) {
+  }
+
+  const toFetch = idsToFetch.slice(0, MAX_API_CALLS_PER_RUN);
+  let rateLimited = false;
+  for (let i = 0; i < toFetch.length && !rateLimited; i += FETCH_CONCURRENCY) {
+    const batch = toFetch.slice(i, i + FETCH_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((id) =>
+        fetchEventDetail(env.EVENT_BOT_STATE, accessToken, id),
+      ),
+    );
+    for (let j = 0; j < results.length; j++) {
+      const r = results[j];
+      if (r.status === "fulfilled") {
+        details.push(r.value);
+      } else if (r.reason instanceof RateLimitedError) {
+        rateLimited = true;
         console.warn(
-          `Rate limited at event ${id}, processed ${details.length}/${eventIds.length} so far`,
+          `Rate limited at event ${batch[j]}, processed ${details.length}/${eventIds.length} so far`,
         );
-        break;
+      } else {
+        throw r.reason;
       }
-      throw e;
-    }
-    details.push(detail);
-    apiCalls++;
-    if (!options.dryRun) {
-      await sleep(FETCH_DELAY_MS);
     }
   }
 
