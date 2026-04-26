@@ -134,6 +134,58 @@ describe("clubEventVEvents — weekly events", () => {
   });
 });
 
+describe("clubEventVEvents — recency filter", () => {
+  it("always renders weekly events even with ancient start_datetime", () => {
+    // Dawn Patrol case: weekly recurring, created in 2025, snapshot still in
+    // 2026 should emit the RRULE. The filter should NEVER drop a recurring
+    // event because of how old its start_datetime is.
+    const dawnPatrol = {
+      ...weeklyTueFri,
+      start_datetime: "2025-06-24T05:45",
+    };
+    const blocks = clubEventVEvents(dawnPatrol, {
+      clubUrl: CLUB_URL,
+      nowUtc: FIXED_NOW,
+    });
+    assert.equal(blocks.length, 1);
+    assert.match(blocks[0], /^RRULE:/m);
+  });
+
+  it("drops one-off occurrences older than 6 months", () => {
+    // FIXED_NOW is 2026-04-26. 6mo back = 2025-10-26.
+    const oldOneOff = {
+      ...noFrequency,
+      upcoming_occurrences: [
+        "2022-01-01T17:00:00Z", // 4 years ago — drop
+        "2025-04-01T17:00:00Z", // ~1 year ago — drop
+        "2025-08-01T17:00:00Z", // ~8 months ago — drop
+      ],
+    };
+    const blocks = clubEventVEvents(oldOneOff, {
+      clubUrl: CLUB_URL,
+      nowUtc: FIXED_NOW,
+    });
+    assert.equal(blocks.length, 0);
+  });
+
+  it("keeps one-off occurrences in the last 6 months and future", () => {
+    const mixed = {
+      ...noFrequency,
+      upcoming_occurrences: [
+        "2022-01-01T17:00:00Z", // ancient — drop
+        "2025-12-01T17:00:00Z", // ~5 months ago — keep
+        "2026-04-20T17:00:00Z", // last week — keep
+        "2026-05-15T17:00:00Z", // future — keep
+      ],
+    };
+    const blocks = clubEventVEvents(mixed, {
+      clubUrl: CLUB_URL,
+      nowUtc: FIXED_NOW,
+    });
+    assert.equal(blocks.length, 3);
+  });
+});
+
 describe("clubEventVEvents — one-off events", () => {
   it("emits one VEVENT per upcoming_occurrence with UTC times", () => {
     const blocks = clubEventVEvents(noFrequency, {

@@ -3,7 +3,6 @@ import {
   refreshStravaToken,
   fetchEvents,
   fetchEventDetail,
-  filterRecentEvents,
   RateLimitedError,
 } from "./strava.ts";
 import { expandOccurrences, type Occurrence } from "./recurrence.ts";
@@ -73,11 +72,6 @@ const MAX_API_CALLS_PER_RUN = 30;
 // parallelism keeps the loop's wall time under the 30s HTTP cap so /preview
 // and /seed actually return.
 const FETCH_CONCURRENCY = 5;
-// Drop events whose latest known occurrence is older than this. Strava clubs
-// accumulate years of dead one-off events; filtering at the list stage keeps
-// the per-run working set small and the calendar feed focused on what members
-// might actually attend.
-const RECENT_EVENT_MONTHS = 6;
 
 export async function runPipeline(
   env: Env,
@@ -95,14 +89,14 @@ export async function runPipeline(
     env.STRAVA_CLIENT_SECRET,
   );
 
-  // 2. Discover events. Keep the FULL id set as ground truth for "what
-  // exists on Strava" (used to drop deleted events from the snapshot).
-  // Filter only decides which IDs we proactively re-fetch detail for.
+  // 2. Discover events. We need details for every event because the list
+  // endpoint's upcoming_occurrences is stale for recurring events (it returns
+  // the original start_datetime, not the next occurrence) — so we can't
+  // filter at this stage without dropping legitimate weekly events. The
+  // calendar feed handles per-occurrence freshness at render time.
   const allEvents = await fetchEvents(accessToken, env.STRAVA_CLUB_ID);
   const currentStravaIds = new Set(allEvents.map((e) => e.id));
-  const eventIds = filterRecentEvents(allEvents, now, RECENT_EVENT_MONTHS).map(
-    (e) => e.id,
-  );
+  const eventIds = allEvents.map((e) => e.id);
 
   // 3. Fetch details. Read all cache entries in parallel (sequential KV.gets
   // for hundreds of events would blow the wall-time limit on their own).

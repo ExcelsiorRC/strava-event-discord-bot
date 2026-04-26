@@ -66,6 +66,19 @@ function clubSummary(event: EventDetail): string {
   return event.women_only ? `🚺 ${event.title}` : event.title;
 }
 
+// Drop one-off VEVENTs whose occurrence is more than this far in the past so
+// the calendar feed isn't cluttered with years-old workouts. Recurring events
+// are unaffected — they emit a single RRULE that calendar clients expand.
+const ONE_OFF_LOOKBACK_MONTHS = 6;
+
+function parseCompactUtc(s: string): Temporal.Instant {
+  // "YYYYMMDDTHHMMSSZ" → ISO instant
+  const iso =
+    `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` +
+    `T${s.slice(9, 11)}:${s.slice(11, 13)}:${s.slice(13, 15)}Z`;
+  return Temporal.Instant.from(iso);
+}
+
 export function clubEventVEvents(
   event: EventDetail,
   opts: ClubEventOpts,
@@ -77,7 +90,20 @@ export function clubEventVEvents(
   ) {
     return [renderWeekly(event, opts)];
   }
-  return event.upcoming_occurrences.map((occ) => renderOneOff(event, occ, opts));
+  const cutoff = parseCompactUtc(opts.nowUtc).subtract({
+    hours: 24 * 30 * ONE_OFF_LOOKBACK_MONTHS,
+  });
+  return event.upcoming_occurrences
+    .filter((occ) => {
+      try {
+        return (
+          Temporal.Instant.compare(Temporal.Instant.from(occ), cutoff) >= 0
+        );
+      } catch {
+        return false;
+      }
+    })
+    .map((occ) => renderOneOff(event, occ, opts));
 }
 
 function renderWeekly(event: EventDetail, opts: ClubEventOpts): string {
