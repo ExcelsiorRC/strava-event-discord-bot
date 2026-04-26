@@ -28,7 +28,7 @@ export function buildEmbed(
   occurrence: Occurrence,
   clubUrl: string,
 ): DiscordEmbed {
-  const unix = Math.floor(occurrence.instant.epochSeconds);
+  const unix = Math.floor(occurrence.instant.epochMilliseconds / 1000);
 
   let description = event.description ?? "";
   if (description.length > MAX_DESC_LEN) {
