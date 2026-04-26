@@ -71,6 +71,38 @@ describe("safeParseIds", () => {
     assert.equal(ids.length, 1);
     assert.equal(ids[0], "1111");
   });
+
+  it("handles descriptions containing unbalanced braces without losing events", () => {
+    // Real-world failure: a hand-rolled brace counter that doesn't skip string
+    // literals loses sync the moment a description contains an unbalanced { or }.
+    // Strava descriptions regularly have these (markdown, code snippets, emoji
+    // brackets like {kingsalmon}). After that point every subsequent event ID
+    // is silently dropped.
+    const text = JSON.stringify([
+      { id: 100, title: "First" },
+      { id: 200, title: "Pep talk", description: "Meet at the {SF State track" },
+      { id: 300, title: "Third" },
+      { id: 400, title: "Fourth", description: "Run } finish line" },
+      { id: 500, title: "Fifth" },
+    ]);
+    assert.deepEqual(safeParseIds(text), ["100", "200", "300", "400", "500"]);
+  });
+
+  it("handles a mix of normal and 19-digit IDs in the same response", () => {
+    const text = JSON.stringify([
+      { id: 100, title: "Short" },
+      { id: "3482146135682753450", title: "Long" }, // already-quoted in fixture
+      { id: 200, title: "Short again" },
+    ]);
+    // Note: real Strava sends the 19-digit ID unquoted as a number; we test
+    // both shapes work via JSON.parse path
+    assert.deepEqual(safeParseIds(text), ["100", "3482146135682753450", "200"]);
+  });
+
+  it("handles unquoted 19-digit IDs from real Strava responses", () => {
+    const text = `[{"id":100,"title":"A"},{"id":3482146135682753450,"title":"B"},{"id":200,"title":"C"}]`;
+    assert.deepEqual(safeParseIds(text), ["100", "3482146135682753450", "200"]);
+  });
 });
 
 describe("fetchEventIds", () => {

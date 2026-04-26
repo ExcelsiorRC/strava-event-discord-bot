@@ -53,6 +53,8 @@ wrangler secret put STRAVA_CLIENT_ID
 wrangler secret put STRAVA_CLIENT_SECRET
 wrangler secret put SEED_SECRET        # any random string — protects /preview and /seed
                                        # e.g. openssl rand -hex 32
+wrangler secret put CALENDAR_KEY       # any random string — gates /calendar.ics
+                                       # share full URL (?key=...) with members
 wrangler secret put DISCORD_WEBHOOK_EVENTS_TEST
 wrangler secret put DISCORD_WEBHOOK_LADIES_TEST
 wrangler secret put DISCORD_WEBHOOK_EVENTS_LIVE
@@ -132,18 +134,19 @@ npm run dev
 
 ## Calendar feed
 
-`GET /calendar.ics` returns an iCalendar feed members can subscribe to in Google Calendar, Apple Calendar, etc.
+`GET /calendar.ics?key=$CALENDAR_KEY` returns an iCalendar feed members can subscribe to in Google Calendar, Apple Calendar, etc. The key is required — requests without it return 403 — so you can share the URL with members but the feed isn't world-readable.
 
 - Club events are read from the snapshot the cron pipeline writes after each run (so the public route never touches Strava).
 - External feeds are configured via `EXTERNAL_CALENDARS` in `wrangler.jsonc` (any public ICS URL — Google Calendar, USATF associations, other clubs, etc).
 - Each external feed is fetched and cached in KV for 1 hour to avoid hammering upstream.
+- Women-only club events are prefixed with `🚺` in the SUMMARY so they're visible everywhere a calendar client renders titles.
 
 Filter with `?include=`:
 
 ```
-/calendar.ics                       # club + every external (default)
-/calendar.ics?include=club          # just our Strava events
-/calendar.ics?include=road,mut,xc   # just external race feeds
+/calendar.ics?key=...                       # club + every external (default)
+/calendar.ics?key=...&include=club          # just our Strava events
+/calendar.ics?key=...&include=road,mut,xc   # just external race feeds
 ```
 
 Each merged event carries `CATEGORIES:<token>` so calendar clients can filter or color-code by source.

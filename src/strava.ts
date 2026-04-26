@@ -5,6 +5,13 @@ const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_API = "https://www.strava.com/api/v3";
 const CACHE_TTL = 86400; // 24 hours
 
+export class RateLimitedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RateLimitedError";
+  }
+}
+
 export async function refreshStravaToken(
   kv: KVNamespace,
   clientId: string,
@@ -45,88 +52,45 @@ export async function refreshStravaToken(
 }
 
 /**
- * Extract top-level event IDs from the list response raw text.
- * Handles IDs that exceed Number.MAX_SAFE_INTEGER by extracting them as strings
- * directly from the JSON text before parsing.
+ * Extract top-level event IDs from the list response.
  *
- * Strategy: Each event in the array starts with {"id":DIGITS. We extract
- * by finding array-level object boundaries. Since the list response is a
- * flat array of event objects, we look for the pattern where "id" is the
- * first key after an object-open brace that follows [ or ,
+ * Strava IDs can exceed Number.MAX_SAFE_INTEGER (newer ones are 19 digits).
+ * Quote any 15+digit "id" before JSON.parse so precision is preserved, then
+ * read e.id from each top-level array element. This avoids hand-rolling a
+ * brace counter, which mishandles `{` and `}` inside string literals (e.g.
+ * descriptions with unbalanced braces) and silently drops events.
  */
 export function safeParseIds(text: string): string[] {
-  const ids: string[] = [];
-  // Match the top-level array elements: objects that start right after [ or ,
-  // Each starts with {"id": or { "id":
-  // We need to avoid nested {"id": inside club/route/athlete objects
-  // Strategy: track brace depth. At depth 1 (inside the top-level array),
-  // the first "id" we see is the event id.
-
-  let depth = 0;
-  let i = 0;
-  let justEnteredObject = false;
-
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch === "[" || ch === "{") {
-      depth++;
-      if (ch === "{" && depth === 2) {
-        justEnteredObject = true;
-      }
-      i++;
-    } else if (ch === "]" || ch === "}") {
-      depth--;
-      i++;
-    } else if (justEnteredObject && ch === '"') {
-      // Look for "id" key at start of depth-2 object
-      if (text.startsWith('"id"', i)) {
-        // Find the colon, then the number
-        let j = i + 4;
-        while (j < text.length && text[j] !== ":") j++;
-        j++; // skip colon
-        while (j < text.length && text[j] === " ") j++; // skip spaces
-        // Extract the number as a string
-        let numStart = j;
-        while (j < text.length && text[j] >= "0" && text[j] <= "9") j++;
-        if (j > numStart) {
-          ids.push(text.slice(numStart, j));
-        }
-        justEnteredObject = false;
-      } else {
-        justEnteredObject = false;
-      }
-      i++;
-    } else {
-      if (ch !== " " && ch !== "\n" && ch !== "\r" && ch !== "\t" && ch !== ",") {
-        justEnteredObject = false;
-      }
-      i++;
-    }
-  }
-
-  return ids;
+  const safe = text.replace(/"id"\s*:\s*(\d{15,})/g, '"id":"$1"');
+  const arr = JSON.parse(safe) as Array<{ id?: string | number }>;
+  return arr.filter((e) => e.id !== undefined).map((e) => String(e.id));
 }
+
+const PER_PAGE = 200;
+const MAX_PAGES = 10;
 
 export async function fetchEventIds(
   accessToken: string,
   clubId: string,
 ): Promise<string[]> {
-  const response = await fetch(
-    `${STRAVA_API}/clubs/${clubId}/group_events`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `Strava list events failed (${response.status}): ${body}`,
+  const all: string[] = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const response = await fetch(
+      `${STRAVA_API}/clubs/${clubId}/group_events?per_page=${PER_PAGE}&page=${page}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
     );
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Strava list events failed (${response.status}): ${body}`,
+      );
+    }
+    const text = await response.text();
+    const ids = safeParseIds(text);
+    all.push(...ids);
+    if (ids.length < PER_PAGE) break;
   }
-
-  const text = await response.text();
-  return safeParseIds(text);
+  return all;
 }
 
 export async function fetchEventDetail(
@@ -149,6 +113,9 @@ export async function fetchEventDetail(
     },
   );
 
+  if (response.status === 429) {
+    throw new RateLimitedError(`Strava rate limit hit while fetching ${eventId}`);
+  }
   if (!response.ok) {
     const body = await response.text();
     throw new Error(

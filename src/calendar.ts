@@ -62,6 +62,10 @@ export interface ClubEventOpts {
   nowUtc: string;
 }
 
+function clubSummary(event: EventDetail): string {
+  return event.women_only ? `🚺 ${event.title}` : event.title;
+}
+
 export function clubEventVEvents(
   event: EventDetail,
   opts: ClubEventOpts,
@@ -97,7 +101,7 @@ function renderWeekly(event: EventDetail, opts: ClubEventOpts): string {
     dtstart: `DTSTART;TZID=${event.zone}:${startCompact}`,
     dtend: `DTEND;TZID=${event.zone}:${endCompact}`,
     rrule,
-    summary: event.title,
+    summary: clubSummary(event),
     location: event.address,
     description: event.description,
     url: `${opts.clubUrl}/group_events/${event.id}`,
@@ -117,7 +121,7 @@ function renderOneOff(
     dtstamp: opts.nowUtc,
     dtstart: `DTSTART:${compactUtc(start)}`,
     dtend: `DTEND:${compactUtc(end)}`,
-    summary: event.title,
+    summary: clubSummary(event),
     location: event.address,
     description: event.description,
     url: `${opts.clubUrl}/group_events/${event.id}`,
