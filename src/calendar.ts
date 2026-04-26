@@ -176,17 +176,31 @@ export async function writeClubSnapshot(
 }
 
 /**
- * Write the snapshot only when its serialized form differs from what's
- * currently in KV. Returns true if it changed (and was written + version
- * bumped), false if it was a no-op. Sorting by id makes the comparison
- * deterministic regardless of the order Strava returns events in.
+ * Sticky merge with deletion detection: keep existing snapshot entries that
+ * are still on Strava (so events aged out of the recency filter persist with
+ * their last-known data), overwrite with freshly-fetched details, and drop
+ * anything not in the current Strava list (a deleted event should disappear
+ * from members' calendars too).
+ *
+ * Returns true iff the merged snapshot differs from what's already in KV
+ * (and was therefore written + version bumped). Sorted by id for a
+ * deterministic comparison regardless of Strava's response order.
  */
 export async function persistClubSnapshot(
   kv: KVNamespace,
-  events: EventDetail[],
+  fetchedDetails: EventDetail[],
+  currentStravaIds: Set<string>,
 ): Promise<boolean> {
-  const sorted = [...events].sort((a, b) => a.id.localeCompare(b.id));
-  const newJson = JSON.stringify(sorted);
+  const existing = await readClubSnapshot(kv);
+  const map = new Map<string, EventDetail>();
+  for (const e of existing) {
+    if (currentStravaIds.has(e.id)) map.set(e.id, e);
+  }
+  for (const e of fetchedDetails) {
+    map.set(e.id, e);
+  }
+  const merged = [...map.values()].sort((a, b) => a.id.localeCompare(b.id));
+  const newJson = JSON.stringify(merged);
   const oldJson = await kv.get(CLUB_SNAPSHOT_KEY);
   if (newJson === oldJson) return false;
   await kv.put(CLUB_SNAPSHOT_KEY, newJson);

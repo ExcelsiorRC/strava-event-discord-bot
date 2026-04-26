@@ -5,7 +5,12 @@ import {
   foldIcsLine,
   clubEventVEvents,
   buildVCalendar,
+  persistClubSnapshot,
+  readClubSnapshot,
+  CLUB_SNAPSHOT_KEY,
 } from "../src/calendar.ts";
+import { MemoryKV } from "./helpers.ts";
+import type { EventDetail } from "../src/types.ts";
 import {
   weeklyTueFri,
   biweeklyMonday,
@@ -186,5 +191,85 @@ describe("buildVCalendar", () => {
     assert.ok(ics.includes("BEGIN:VCALENDAR\r\n"));
     assert.ok(ics.includes("END:VCALENDAR\r\n"));
     assert.ok(!ics.includes("BEGIN:VEVENT"));
+  });
+});
+
+describe("persistClubSnapshot — sticky merge with deletion detection", () => {
+  function ev(id: string, title: string): EventDetail {
+    return {
+      id,
+      title,
+      description: "",
+      women_only: false,
+      private: false,
+      zone: "America/Los_Angeles",
+      address: "",
+      upcoming_occurrences: [],
+    };
+  }
+  const ids = (...xs: string[]) => new Set(xs);
+
+  it("first write seeds the snapshot", async () => {
+    const kv = new MemoryKV() as unknown as KVNamespace;
+    const changed = await persistClubSnapshot(
+      kv,
+      [ev("1", "A"), ev("2", "B")],
+      ids("1", "2"),
+    );
+    assert.equal(changed, true);
+    const snap = await readClubSnapshot(kv);
+    assert.deepEqual(snap.map((e) => e.id).sort(), ["1", "2"]);
+  });
+
+  it("keeps aged-out events that are still on Strava", async () => {
+    const kv = new MemoryKV() as unknown as KVNamespace;
+    await persistClubSnapshot(kv, [ev("1", "A"), ev("2", "B")], ids("1", "2"));
+    // Next cron: only event 3 was freshly fetched (1 and 2 aged out of filter)
+    // BUT all three are still on Strava
+    const changed = await persistClubSnapshot(kv, [ev("3", "C")], ids("1", "2", "3"));
+    assert.equal(changed, true);
+    const snap = await readClubSnapshot(kv);
+    assert.deepEqual(snap.map((e) => e.id).sort(), ["1", "2", "3"]);
+  });
+
+  it("removes events that were deleted on Strava", async () => {
+    const kv = new MemoryKV() as unknown as KVNamespace;
+    await persistClubSnapshot(
+      kv,
+      [ev("1", "A"), ev("2", "B"), ev("3", "C")],
+      ids("1", "2", "3"),
+    );
+    // Cron runs again; event 2 was deleted on Strava (not in current id set)
+    const changed = await persistClubSnapshot(kv, [], ids("1", "3"));
+    assert.equal(changed, true);
+    const snap = await readClubSnapshot(kv);
+    assert.deepEqual(snap.map((e) => e.id).sort(), ["1", "3"]);
+  });
+
+  it("refreshes existing entries when re-fetched", async () => {
+    const kv = new MemoryKV() as unknown as KVNamespace;
+    await persistClubSnapshot(kv, [ev("1", "Old Title")], ids("1"));
+    await persistClubSnapshot(kv, [ev("1", "New Title")], ids("1"));
+    const snap = await readClubSnapshot(kv);
+    assert.equal(snap.length, 1);
+    assert.equal(snap[0].title, "New Title");
+  });
+
+  it("returns false (no bump) when merge produces identical content", async () => {
+    const kv = new MemoryKV() as unknown as KVNamespace;
+    await persistClubSnapshot(kv, [ev("1", "A"), ev("2", "B")], ids("1", "2"));
+    const changed = await persistClubSnapshot(
+      kv,
+      [ev("1", "A"), ev("2", "B")],
+      ids("1", "2"),
+    );
+    assert.equal(changed, false);
+  });
+
+  it("returns false when new fetched set is a subset (sticky no-op)", async () => {
+    const kv = new MemoryKV() as unknown as KVNamespace;
+    await persistClubSnapshot(kv, [ev("1", "A"), ev("2", "B")], ids("1", "2"));
+    const changed = await persistClubSnapshot(kv, [ev("1", "A")], ids("1", "2"));
+    assert.equal(changed, false);
   });
 });

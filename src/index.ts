@@ -95,9 +95,11 @@ export async function runPipeline(
     env.STRAVA_CLIENT_SECRET,
   );
 
-  // 2. Discover events; drop ones whose latest known occurrence is older
-  // than the recency window so we don't spend API budget on dead events.
+  // 2. Discover events. Keep the FULL id set as ground truth for "what
+  // exists on Strava" (used to drop deleted events from the snapshot).
+  // Filter only decides which IDs we proactively re-fetch detail for.
   const allEvents = await fetchEvents(accessToken, env.STRAVA_CLUB_ID);
+  const currentStravaIds = new Set(allEvents.map((e) => e.id));
   const eventIds = filterRecentEvents(allEvents, now, RECENT_EVENT_MONTHS).map(
     (e) => e.id,
   );
@@ -140,9 +142,10 @@ export async function runPipeline(
 
   // 3b. Persist snapshot only if changed; that also bumps the calendar
   // version so edge-cached ICS responses become unreachable on the next
-  // request. Crons that produce identical data leave the cache warm.
+  // request. Sticky merge: aged-out events that are still on Strava stay,
+  // events removed from Strava get dropped.
   if (!options.dryRun) {
-    await persistClubSnapshot(env.EVENT_BOT_STATE, details);
+    await persistClubSnapshot(env.EVENT_BOT_STATE, details, currentStravaIds);
   }
 
   // 4. Announce new events + expand occurrences
