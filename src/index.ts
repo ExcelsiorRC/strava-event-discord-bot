@@ -91,14 +91,18 @@ export async function runPipeline(
   // 2. Discover event IDs
   const eventIds = await fetchEventIds(accessToken, env.STRAVA_CLUB_ID);
 
-  // 3. Fetch details. Cache hits are free; uncached fetches consume the
-  // per-run budget so each cron tick completes inside Worker time limits.
-  // Whatever doesn't fit this run gets picked up next cycle from the cache
-  // it built. On 429, break and write whatever partial set we have.
+  // 3. Fetch details. Read all cache entries in parallel (sequential KV.gets
+  // for hundreds of events can blow the Worker wall-time limit on their own).
+  // Then sequentially fetch the uncached ones, capped by the per-run budget so
+  // each cron tick finishes. On 429, break with the partial set we have.
+  const cachedRaws = await Promise.all(
+    eventIds.map((id) => env.EVENT_BOT_STATE.get(cacheDetailKey(id))),
+  );
   const details: EventDetail[] = [];
   let apiCalls = 0;
-  for (const id of eventIds) {
-    const cached = await env.EVENT_BOT_STATE.get(cacheDetailKey(id));
+  for (let i = 0; i < eventIds.length; i++) {
+    const id = eventIds[i];
+    const cached = cachedRaws[i];
     if (cached) {
       details.push(JSON.parse(cached) as EventDetail);
       continue;
