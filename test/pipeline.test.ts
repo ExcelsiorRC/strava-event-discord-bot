@@ -310,6 +310,25 @@ describe("runPipeline", () => {
     assert.equal(snap.length, 100);
   });
 
+  it("exits gracefully when Strava list endpoint is rate-limited", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    const env = createEnv(kv);
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) return new Response(TOKEN_RESPONSE, { status: 200 });
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response('{"message":"Rate Limit Exceeded"}', { status: 429 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    // Should NOT throw — pipeline must degrade gracefully
+    const result = await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+    assert.deepEqual(result.would_post, []);
+    assert.deepEqual(result.skipped_already_posted, []);
+  });
+
   it("dry run mode does not post or write KV", async () => {
     const kv = new MemoryKV();
     await kv.put("strava:refresh_token", "initial_refresh");

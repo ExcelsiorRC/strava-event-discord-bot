@@ -111,6 +111,17 @@ describe("safeParseIds", () => {
 describe("fetchEvents", () => {
   afterEach(() => restoreFetch());
 
+  it("throws RateLimitedError on 429 (not a generic Error)", async () => {
+    const { RateLimitedError } = await import("../src/strava.ts");
+    mockFetch(async () =>
+      new Response('{"message":"Rate Limit Exceeded"}', { status: 429 }),
+    );
+    await assert.rejects(
+      () => fetchEvents("token", "5555"),
+      (e: unknown) => e instanceof RateLimitedError,
+    );
+  });
+
   it("returns id + upcoming_occurrences for each list item", async () => {
     mockFetch(async () => {
       return new Response(

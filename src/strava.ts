@@ -93,6 +93,11 @@ export async function fetchEvents(
       `${STRAVA_API}/clubs/${clubId}/group_events?per_page=${PER_PAGE}&page=${page}`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
+    if (response.status === 429) {
+      throw new RateLimitedError(
+        `Strava rate limit hit while listing club events`,
+      );
+    }
     if (!response.ok) {
       const body = await response.text();
       throw new Error(
