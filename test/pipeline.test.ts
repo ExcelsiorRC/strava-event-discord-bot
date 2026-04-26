@@ -310,6 +310,98 @@ describe("runPipeline", () => {
     assert.equal(snap.length, 100);
   });
 
+  it("does NOT announce dead old events with no future occurrences (silently marks seen)", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    // Event is unseen but has only past occurrences — typical of the years-old
+    // one-offs cluttering Strava's list. Should be marked seen without
+    // posting to Discord.
+    const env = createEnv(kv);
+    const discordCalls: string[] = [];
+
+    const deadEventList = JSON.stringify([
+      {
+        id: 999,
+        resource_state: 2,
+        title: "Old One-Off",
+        upcoming_occurrences: ["2022-01-01T10:00:00Z"],
+      },
+    ]);
+    const deadEventDetail = JSON.stringify({
+      id: 999,
+      title: "Old One-Off",
+      description: "happened years ago",
+      women_only: false,
+      private: false,
+      zone: "America/Los_Angeles",
+      address: "",
+      frequency: "no_repeat",
+      upcoming_occurrences: ["2022-01-01T10:00:00Z"],
+    });
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) return new Response(TOKEN_RESPONSE, { status: 200 });
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(deadEventList, { status: 200 });
+      }
+      if (url.includes("/group_events/999")) return new Response(deadEventDetail, { status: 200 });
+      if (url.includes("discord.test")) {
+        discordCalls.push(url);
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+
+    assert.equal(discordCalls.length, 0, "must not post any Discord announcement");
+    assert.equal(await kv.get("seen:test:999"), "1", "must still mark as seen");
+  });
+
+  it("DOES announce a brand-new event with at least one future occurrence", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    const env = createEnv(kv);
+    const discordCalls: string[] = [];
+
+    const liveList = JSON.stringify([
+      {
+        id: 777,
+        resource_state: 2,
+        title: "Real Future Event",
+        upcoming_occurrences: ["2027-01-01T10:00:00Z"],
+      },
+    ]);
+    const liveDetail = JSON.stringify({
+      id: 777,
+      title: "Real Future Event",
+      description: "happening next year",
+      women_only: false,
+      private: false,
+      zone: "America/Los_Angeles",
+      address: "",
+      frequency: "no_repeat",
+      upcoming_occurrences: ["2027-01-01T10:00:00Z"],
+    });
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) return new Response(TOKEN_RESPONSE, { status: 200 });
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(liveList, { status: 200 });
+      }
+      if (url.includes("/group_events/777")) return new Response(liveDetail, { status: 200 });
+      if (url.includes("discord.test")) {
+        discordCalls.push(url);
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+
+    assert.equal(discordCalls.length, 1, "must announce events with future occurrences");
+  });
+
   it("exits gracefully when Strava list endpoint is rate-limited", async () => {
     const kv = new MemoryKV();
     await kv.put("strava:refresh_token", "initial_refresh");

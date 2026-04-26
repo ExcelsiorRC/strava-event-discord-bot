@@ -5,7 +5,11 @@ import {
   fetchEventDetail,
   RateLimitedError,
 } from "./strava.ts";
-import { expandOccurrences, type Occurrence } from "./recurrence.ts";
+import {
+  expandOccurrences,
+  hasFutureOccurrence,
+  type Occurrence,
+} from "./recurrence.ts";
 import { buildEmbed, buildAnnouncementEmbed, postToDiscord, getWebhookUrl } from "./discord.ts";
 import {
   isAlreadyPosted,
@@ -175,13 +179,19 @@ export async function runPipeline(
     let justAnnounced = false;
 
     if (!seen && !options.dryRun) {
-      if (!options.seedMode) {
+      // Always mark seen so we don't reconsider this event next cron. Only
+      // post to Discord if it's actually a useful event — otherwise we spam
+      // the channel with years-old one-offs every time we discover one for
+      // the first time.
+      const announce =
+        !options.seedMode && hasFutureOccurrence(detail, now);
+      if (announce) {
         const webhookUrl = getWebhookUrl(env, detail, mode);
         const embed = buildAnnouncementEmbed(detail, env.STRAVA_CLUB_URL);
         await postToDiscord(webhookUrl, embed);
       }
       await markEventSeen(env.EVENT_BOT_STATE, mode, detail.id);
-      justAnnounced = true;
+      justAnnounced = announce;
     }
 
     // Expand occurrences for 24h reminders
