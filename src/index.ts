@@ -1,8 +1,9 @@
 import { Temporal } from "@js-temporal/polyfill";
 import {
   refreshStravaToken,
-  fetchEventIds,
+  fetchEvents,
   fetchEventDetail,
+  filterRecentEvents,
   RateLimitedError,
 } from "./strava.ts";
 import { expandOccurrences, type Occurrence } from "./recurrence.ts";
@@ -15,11 +16,12 @@ import {
   cacheDetailKey,
 } from "./state.ts";
 import {
-  writeClubSnapshot,
+  persistClubSnapshot,
   readClubSnapshot,
   clubEventVEvents,
   buildVCalendar,
   formatNowUtc,
+  getCalendarVersion,
 } from "./calendar.ts";
 import { fetchExternalIcs, transformExternalIcs } from "./external.ts";
 import type { EventDetail } from "./types.ts";
@@ -67,6 +69,11 @@ const FETCH_DELAY_MS = 50;
 // Cap API calls per run so each cron tick completes within Worker time limits.
 // Cache hits don't count. With this cap the cache fully warms over a few cycles.
 const MAX_API_CALLS_PER_RUN = 30;
+// Drop events whose latest known occurrence is older than this. Strava clubs
+// accumulate years of dead one-off events; filtering at the list stage keeps
+// the per-run working set small and the calendar feed focused on what members
+// might actually attend.
+const RECENT_EVENT_MONTHS = 6;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -88,8 +95,12 @@ export async function runPipeline(
     env.STRAVA_CLIENT_SECRET,
   );
 
-  // 2. Discover event IDs
-  const eventIds = await fetchEventIds(accessToken, env.STRAVA_CLUB_ID);
+  // 2. Discover events; drop ones whose latest known occurrence is older
+  // than the recency window so we don't spend API budget on dead events.
+  const allEvents = await fetchEvents(accessToken, env.STRAVA_CLUB_ID);
+  const eventIds = filterRecentEvents(allEvents, now, RECENT_EVENT_MONTHS).map(
+    (e) => e.id,
+  );
 
   // 3. Fetch details. Read all cache entries in parallel (sequential KV.gets
   // for hundreds of events can blow the Worker wall-time limit on their own).
@@ -127,9 +138,11 @@ export async function runPipeline(
     }
   }
 
-  // 3b. Persist snapshot for the calendar feed (skip on dry run)
+  // 3b. Persist snapshot only if changed; that also bumps the calendar
+  // version so edge-cached ICS responses become unreachable on the next
+  // request. Crons that produce identical data leave the cache warm.
   if (!options.dryRun) {
-    await writeClubSnapshot(env.EVENT_BOT_STATE, details);
+    await persistClubSnapshot(env.EVENT_BOT_STATE, details);
   }
 
   // 4. Announce new events + expand occurrences
@@ -198,7 +211,11 @@ export async function runPipeline(
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/preview") {
@@ -224,7 +241,27 @@ export default {
       ) {
         return new Response("Forbidden", { status: 403 });
       }
-      const res = await handleCalendar(env, url);
+
+      // Edge-cache the rendered ICS. Strip the secret + force GET so all
+      // members + HEAD probes share entries. Inject the calendar version
+      // (bumped only when the snapshot actually changes) into the cache key
+      // — when version changes, all old entries become unreachable in one
+      // shot, no purge needed.
+      const version = await getCalendarVersion(env.EVENT_BOT_STATE);
+      const cacheUrl = new URL(url);
+      cacheUrl.searchParams.delete("key");
+      cacheUrl.searchParams.set("v", version);
+      const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
+      const cache = (globalThis as { caches?: CacheStorage }).caches?.default;
+
+      let res = cache ? await cache.match(cacheKey) : undefined;
+      if (!res) {
+        res = await handleCalendar(env, url);
+        if (cache && res.status === 200) {
+          ctx.waitUntil(cache.put(cacheKey, res.clone()));
+        }
+      }
+
       return request.method === "HEAD"
         ? new Response(null, { status: res.status, headers: res.headers })
         : res;
@@ -305,7 +342,10 @@ async function handleCalendar(env: Env, url: URL): Promise<Response> {
     status: 200,
     headers: {
       "content-type": "text/calendar; charset=utf-8",
-      "cache-control": "public, max-age=900",
+      // Long TTL: version-bump on snapshot change is the actual freshness
+      // mechanism. Stale entries become unreachable immediately on bump and
+      // get garbage-collected later via this TTL.
+      "cache-control": "public, max-age=86400",
     },
   });
 }

@@ -166,6 +166,7 @@ export interface VCalendarParts {
 }
 
 export const CLUB_SNAPSHOT_KEY = "calendar:club:snapshot";
+export const CALENDAR_VERSION_KEY = "calendar:version";
 
 export async function writeClubSnapshot(
   kv: KVNamespace,
@@ -174,12 +175,42 @@ export async function writeClubSnapshot(
   await kv.put(CLUB_SNAPSHOT_KEY, JSON.stringify(events));
 }
 
+/**
+ * Write the snapshot only when its serialized form differs from what's
+ * currently in KV. Returns true if it changed (and was written + version
+ * bumped), false if it was a no-op. Sorting by id makes the comparison
+ * deterministic regardless of the order Strava returns events in.
+ */
+export async function persistClubSnapshot(
+  kv: KVNamespace,
+  events: EventDetail[],
+): Promise<boolean> {
+  const sorted = [...events].sort((a, b) => a.id.localeCompare(b.id));
+  const newJson = JSON.stringify(sorted);
+  const oldJson = await kv.get(CLUB_SNAPSHOT_KEY);
+  if (newJson === oldJson) return false;
+  await kv.put(CLUB_SNAPSHOT_KEY, newJson);
+  await bumpCalendarVersion(kv);
+  return true;
+}
+
 export async function readClubSnapshot(
   kv: KVNamespace,
 ): Promise<EventDetail[]> {
   const raw = await kv.get(CLUB_SNAPSHOT_KEY);
   if (!raw) return [];
   return JSON.parse(raw) as EventDetail[];
+}
+
+export async function bumpCalendarVersion(kv: KVNamespace): Promise<void> {
+  await kv.put(
+    CALENDAR_VERSION_KEY,
+    String(Temporal.Now.instant().epochMilliseconds),
+  );
+}
+
+export async function getCalendarVersion(kv: KVNamespace): Promise<string> {
+  return (await kv.get(CALENDAR_VERSION_KEY)) ?? "0";
 }
 
 export function buildVCalendar(parts: VCalendarParts): string {

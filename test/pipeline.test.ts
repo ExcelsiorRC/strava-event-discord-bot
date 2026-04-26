@@ -40,7 +40,12 @@ function createEnv(kv: MemoryKV): Env {
 // Expected occurrence: Tuesday 2026-04-28 05:45 LA = 2026-04-28T12:45:00Z
 
 const LIST_RESPONSE = JSON.stringify([
-  { id: 100, resource_state: 2, title: "Weekly Run" },
+  {
+    id: 100,
+    resource_state: 2,
+    title: "Weekly Run",
+    upcoming_occurrences: ["2026-04-28T12:45:00Z"],
+  },
 ]);
 
 const DETAIL_RESPONSE = JSON.stringify({
@@ -191,7 +196,12 @@ describe("runPipeline", () => {
     let detailFetches = 0;
     const ids = Array.from({ length: 100 }, (_, i) => i + 1);
     const listResponse = JSON.stringify(
-      ids.map((id) => ({ id, resource_state: 2, title: `Event ${id}` })),
+      ids.map((id) => ({
+        id,
+        resource_state: 2,
+        title: `Event ${id}`,
+        upcoming_occurrences: ["2026-04-28T12:45:00Z"],
+      })),
     );
 
     mockFetch(async (url: string) => {
@@ -259,7 +269,12 @@ describe("runPipeline", () => {
     let detailFetches = 0;
     const ids = Array.from({ length: 100 }, (_, i) => i + 1);
     const listResponse = JSON.stringify(
-      ids.map((id) => ({ id, resource_state: 2, title: `E${id}` })),
+      ids.map((id) => ({
+        id,
+        resource_state: 2,
+        title: `E${id}`,
+        upcoming_occurrences: ["2026-04-28T12:45:00Z"],
+      })),
     );
 
     mockFetch(async (url: string) => {
@@ -402,6 +417,58 @@ describe("runPipeline", () => {
     assert.equal(events.length, 1);
     assert.equal(events[0].id, "100");
     assert.equal(events[0].title, "Weekly Run");
+  });
+
+  it("bumps calendar version when snapshot content changes", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    await kv.put("seen:test:100", "1");
+    await kv.put("calendar:version", "old-version");
+    // No prior snapshot — first run will write one, so version must bump
+    const env = createEnv(kv);
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) return new Response(TOKEN_RESPONSE, { status: 200 });
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(LIST_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/group_events/100")) return new Response(DETAIL_RESPONSE, { status: 200 });
+      if (url.includes("discord.test")) return new Response(null, { status: 200 });
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+
+    const newVersion = await kv.get("calendar:version");
+    assert.ok(newVersion);
+    assert.notEqual(newVersion, "old-version");
+  });
+
+  it("does NOT bump version when snapshot is unchanged", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    await kv.put("seen:test:100", "1");
+
+    // First run to establish a baseline snapshot
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) return new Response(TOKEN_RESPONSE, { status: 200 });
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(LIST_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/group_events/100")) return new Response(DETAIL_RESPONSE, { status: 200 });
+      if (url.includes("discord.test")) return new Response(null, { status: 200 });
+      return new Response("Not found", { status: 404 });
+    });
+
+    const env = createEnv(kv);
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+    const versionAfterFirst = await kv.get("calendar:version");
+    assert.ok(versionAfterFirst);
+
+    // Second run with identical upstream data — version should be unchanged
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+    const versionAfterSecond = await kv.get("calendar:version");
+    assert.equal(versionAfterSecond, versionAfterFirst);
   });
 
   it("dry run does not write snapshot", async () => {

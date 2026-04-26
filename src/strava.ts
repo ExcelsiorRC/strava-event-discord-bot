@@ -1,5 +1,11 @@
+import { Temporal } from "@js-temporal/polyfill";
 import type { EventDetail } from "./types.ts";
 import { cacheDetailKey } from "./state.ts";
+
+export interface EventListItem {
+  id: string;
+  upcoming_occurrences: string[];
+}
 
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_API = "https://www.strava.com/api/v3";
@@ -73,7 +79,15 @@ export async function fetchEventIds(
   accessToken: string,
   clubId: string,
 ): Promise<string[]> {
-  const all: string[] = [];
+  const events = await fetchEvents(accessToken, clubId);
+  return events.map((e) => e.id);
+}
+
+export async function fetchEvents(
+  accessToken: string,
+  clubId: string,
+): Promise<EventListItem[]> {
+  const all: EventListItem[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const response = await fetch(
       `${STRAVA_API}/clubs/${clubId}/group_events?per_page=${PER_PAGE}&page=${page}`,
@@ -86,11 +100,49 @@ export async function fetchEventIds(
       );
     }
     const text = await response.text();
-    const ids = safeParseIds(text);
-    all.push(...ids);
-    if (ids.length < PER_PAGE) break;
+    const items = parseEventListItems(text);
+    all.push(...items);
+    if (items.length < PER_PAGE) break;
   }
   return all;
+}
+
+function parseEventListItems(text: string): EventListItem[] {
+  const safe = text.replace(/"id"\s*:\s*(\d{15,})/g, '"id":"$1"');
+  const arr = JSON.parse(safe) as Array<{
+    id?: string | number;
+    upcoming_occurrences?: string[];
+  }>;
+  return arr
+    .filter((e) => e.id !== undefined)
+    .map((e) => ({
+      id: String(e.id),
+      upcoming_occurrences: e.upcoming_occurrences ?? [],
+    }));
+}
+
+/**
+ * Drop events whose latest known occurrence is older than `monthsBack`,
+ * and events with no known occurrences. Uses the list-endpoint
+ * upcoming_occurrences (stale per CLAUDE.md but sufficient for a coarse
+ * "is this still active?" filter).
+ */
+export function filterRecentEvents(
+  events: EventListItem[],
+  now: Temporal.Instant,
+  monthsBack: number,
+): EventListItem[] {
+  const cutoff = now.subtract({ hours: monthsBack * 30 * 24 });
+  return events.filter((e) => {
+    if (e.upcoming_occurrences.length === 0) return false;
+    return e.upcoming_occurrences.some((occ) => {
+      try {
+        return Temporal.Instant.compare(Temporal.Instant.from(occ), cutoff) >= 0;
+      } catch {
+        return false;
+      }
+    });
+  });
 }
 
 export async function fetchEventDetail(
