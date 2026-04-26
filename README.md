@@ -136,10 +136,12 @@ npm run dev
 
 `GET /calendar.ics?key=$CALENDAR_KEY` returns an iCalendar feed members can subscribe to in Google Calendar, Apple Calendar, etc. The key is required — requests without it return 403 — so you can share the URL with members but the feed isn't world-readable.
 
-- Club events are read from the snapshot the cron pipeline writes after each run (so the public route never touches Strava).
+- Club events are read from the snapshot the cron pipeline writes (so the public route never touches Strava).
 - External feeds are configured via `EXTERNAL_CALENDARS` in `wrangler.jsonc` (any public ICS URL — Google Calendar, USATF associations, other clubs, etc).
-- Each external feed is fetched and cached in KV for 1 hour to avoid hammering upstream.
-- Women-only club events are prefixed with `🚺` in the SUMMARY so they're visible everywhere a calendar client renders titles.
+- Each external feed is fetched and cached in KV for 1 hour.
+- Women-only club events are prefixed with `🚺` in the SUMMARY.
+- Cron only fetches details for events with an occurrence in the last `RECENT_EVENT_MONTHS` (6) months. Older events that were already in the snapshot stay; ones removed from Strava entirely are dropped.
+- Edge-cached via `caches.default` for 24h. The cache key includes a `calendar:version` that gets bumped only when the snapshot content actually changes — so updates appear within seconds of the next cron, but unchanged crons leave the cache warm.
 
 Filter with `?include=`:
 
@@ -151,7 +153,7 @@ Filter with `?include=`:
 
 Each merged event carries `CATEGORIES:<token>` so calendar clients can filter or color-code by source.
 
-
+## Event routing
 
 - `women_only === true` -> ladies webhook
 - Everything else -> main events webhook
@@ -161,5 +163,6 @@ Each merged event carries `CATEGORIES:<token>` so calendar clients can filter or
 
 - **Event IDs are strings** — some Strava IDs exceed 2^53 and would lose precision as JavaScript numbers
 - **DST safety** — all datetime math uses Temporal API, never `Date`
-- **Rate limits** — 200 req/15min, 2000/day. The 24h detail cache keeps steady-state at ~11 req/hour
-- **Endpoints are auth-gated** — `/preview` and `/seed` both require `?key=SEED_SECRET`
+- **Rate limits** — Strava: 200 req/15min, 2000/day. Per-cron budget caps uncached fetches at 30 (in 5-wide concurrent batches), spreading first-time warmup across a few cycles. Steady-state with 24h detail cache is ~2 req/cron.
+- **Worker plan** — Standard ($5/mo) is required. Free's 50-subrequest cap can't fit a club with 250+ events; pipeline gets canceled mid-run. Standard defaults (10K subreq, 30s CPU, 30min cron via `waitUntil`) are sufficient — no `limits` config needed.
+- **Endpoints are auth-gated** — `/preview` and `/seed` use `?key=SEED_SECRET`; `/calendar.ics` uses `?key=CALENDAR_KEY` (separate so members can have the calendar URL without admin access)
