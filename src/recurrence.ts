@@ -112,6 +112,35 @@ function expandWeekly(
   return results;
 }
 
+/**
+ * True if the event is "alive" — weekly recurring (RRULE generates futures
+ * even if upcoming_occurrences is empty), or has at least one
+ * upcoming_occurrence at or after `now`.
+ *
+ * Strava clubs accumulate years of dead one-off events in the list endpoint;
+ * gating Discord announcements on this prevents spam when we discover them
+ * for the first time.
+ */
+export function hasFutureOccurrence(
+  event: EventDetail,
+  now: Temporal.Instant,
+): boolean {
+  if (
+    event.frequency === "weekly" &&
+    event.days_of_week?.length &&
+    event.start_datetime
+  ) {
+    return true;
+  }
+  return event.upcoming_occurrences.some((occ) => {
+    try {
+      return Temporal.Instant.compare(Temporal.Instant.from(occ), now) >= 0;
+    } catch {
+      return false;
+    }
+  });
+}
+
 function expandFromUpcoming(
   event: EventDetail,
   now: Temporal.Instant,
