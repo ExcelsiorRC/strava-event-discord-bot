@@ -7,7 +7,13 @@ import {
 } from "./strava.ts";
 import { expandOccurrences, type Occurrence } from "./recurrence.ts";
 import { buildEmbed, buildAnnouncementEmbed, postToDiscord, getWebhookUrl } from "./discord.ts";
-import { isAlreadyPosted, markPosted, isEventSeen, markEventSeen } from "./state.ts";
+import {
+  isAlreadyPosted,
+  markPosted,
+  isEventSeen,
+  markEventSeen,
+  cacheDetailKey,
+} from "./state.ts";
 import {
   writeClubSnapshot,
   readClubSnapshot,
@@ -58,6 +64,9 @@ interface PipelineOptions {
 }
 
 const FETCH_DELAY_MS = 50;
+// Cap API calls per run so each cron tick completes within Worker time limits.
+// Cache hits don't count. With this cap the cache fully warms over a few cycles.
+const MAX_API_CALLS_PER_RUN = 30;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -82,11 +91,19 @@ export async function runPipeline(
   // 2. Discover event IDs
   const eventIds = await fetchEventIds(accessToken, env.STRAVA_CLUB_ID);
 
-  // 3. Fetch details (with caching and rate-limit delay).
-  // On 429 we break gracefully and keep the partial set — the next cron run
-  // picks up where we left off as cache fills.
+  // 3. Fetch details. Cache hits are free; uncached fetches consume the
+  // per-run budget so each cron tick completes inside Worker time limits.
+  // Whatever doesn't fit this run gets picked up next cycle from the cache
+  // it built. On 429, break and write whatever partial set we have.
   const details: EventDetail[] = [];
+  let apiCalls = 0;
   for (const id of eventIds) {
+    const cached = await env.EVENT_BOT_STATE.get(cacheDetailKey(id));
+    if (cached) {
+      details.push(JSON.parse(cached) as EventDetail);
+      continue;
+    }
+    if (apiCalls >= MAX_API_CALLS_PER_RUN) continue;
     let detail: EventDetail;
     try {
       detail = await fetchEventDetail(env.EVENT_BOT_STATE, accessToken, id);
@@ -100,6 +117,7 @@ export async function runPipeline(
       throw e;
     }
     details.push(detail);
+    apiCalls++;
     if (!options.dryRun) {
       await sleep(FETCH_DELAY_MS);
     }

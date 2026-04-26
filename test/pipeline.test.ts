@@ -182,6 +182,119 @@ describe("runPipeline", () => {
     assert.equal(discordCalls.length, 0);
   });
 
+  it("caps detail fetches per run; snapshot still written with partial set", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    for (let i = 1; i <= 100; i++) await kv.put(`seen:test:${i}`, "1");
+    const env = createEnv(kv);
+
+    let detailFetches = 0;
+    const ids = Array.from({ length: 100 }, (_, i) => i + 1);
+    const listResponse = JSON.stringify(
+      ids.map((id) => ({ id, resource_state: 2, title: `Event ${id}` })),
+    );
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) return new Response(TOKEN_RESPONSE, { status: 200 });
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(listResponse, { status: 200 });
+      }
+      const m = url.match(/group_events\/(\d+)/);
+      if (m) {
+        detailFetches++;
+        return new Response(
+          JSON.stringify({
+            id: Number(m[1]),
+            title: `Event ${m[1]}`,
+            description: "",
+            women_only: false,
+            private: false,
+            zone: "America/Los_Angeles",
+            address: "",
+            upcoming_occurrences: [],
+            resource_state: 3,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+
+    assert.ok(detailFetches > 0, "should fetch some details");
+    assert.ok(
+      detailFetches <= 50,
+      `expected fetches capped <= 50, got ${detailFetches}`,
+    );
+
+    const snapshot = await kv.get("calendar:club:snapshot");
+    assert.ok(snapshot, "snapshot must be written even when budget caps fetches");
+    const snap = JSON.parse(snapshot!) as { id: string }[];
+    assert.equal(snap.length, detailFetches);
+  });
+
+  it("uses cached details past the fetch budget without API calls", async () => {
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    for (let i = 1; i <= 80; i++) {
+      await kv.put(`seen:test:${i}`, "1");
+      await kv.put(
+        `cache:detail:${i}`,
+        JSON.stringify({
+          id: String(i),
+          title: `Cached ${i}`,
+          description: "",
+          women_only: false,
+          private: false,
+          zone: "America/Los_Angeles",
+          address: "",
+          upcoming_occurrences: [],
+        }),
+      );
+    }
+    for (let i = 81; i <= 100; i++) await kv.put(`seen:test:${i}`, "1");
+    const env = createEnv(kv);
+
+    let detailFetches = 0;
+    const ids = Array.from({ length: 100 }, (_, i) => i + 1);
+    const listResponse = JSON.stringify(
+      ids.map((id) => ({ id, resource_state: 2, title: `E${id}` })),
+    );
+
+    mockFetch(async (url: string) => {
+      if (url.includes("/oauth/token")) return new Response(TOKEN_RESPONSE, { status: 200 });
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(listResponse, { status: 200 });
+      }
+      const m = url.match(/group_events\/(\d+)/);
+      if (m) {
+        detailFetches++;
+        return new Response(
+          JSON.stringify({
+            id: Number(m[1]),
+            title: `Fresh ${m[1]}`,
+            description: "",
+            women_only: false,
+            private: false,
+            zone: "America/Los_Angeles",
+            address: "",
+            upcoming_occurrences: [],
+            resource_state: 3,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, { nowOverride: "2026-04-27T13:00:00Z" });
+
+    assert.equal(detailFetches, 20);
+    const snap = JSON.parse((await kv.get("calendar:club:snapshot"))!) as unknown[];
+    assert.equal(snap.length, 100);
+  });
+
   it("dry run mode does not post or write KV", async () => {
     const kv = new MemoryKV();
     await kv.put("strava:refresh_token", "initial_refresh");
