@@ -3,7 +3,21 @@ import { refreshStravaToken, fetchEventIds, fetchEventDetail } from "./strava.ts
 import { expandOccurrences, type Occurrence } from "./recurrence.ts";
 import { buildEmbed, buildAnnouncementEmbed, postToDiscord, getWebhookUrl } from "./discord.ts";
 import { isAlreadyPosted, markPosted, isEventSeen, markEventSeen } from "./state.ts";
+import {
+  writeClubSnapshot,
+  readClubSnapshot,
+  clubEventVEvents,
+  buildVCalendar,
+  formatNowUtc,
+} from "./calendar.ts";
+import { fetchExternalIcs, transformExternalIcs } from "./external.ts";
 import type { EventDetail } from "./types.ts";
+
+export interface ExternalCalendar {
+  token: string;
+  name: string;
+  url: string;
+}
 
 export interface Env {
   EVENT_BOT_STATE: KVNamespace;
@@ -17,6 +31,7 @@ export interface Env {
   DISCORD_WEBHOOK_LADIES_TEST: string;
   DISCORD_WEBHOOK_EVENTS_LIVE: string;
   DISCORD_WEBHOOK_LADIES_LIVE: string;
+  EXTERNAL_CALENDARS?: ExternalCalendar[];
 }
 
 interface OccurrenceInfo {
@@ -70,6 +85,11 @@ export async function runPipeline(
     if (!options.dryRun) {
       await sleep(FETCH_DELAY_MS);
     }
+  }
+
+  // 3b. Persist snapshot for the calendar feed (skip on dry run)
+  if (!options.dryRun) {
+    await writeClubSnapshot(env.EVENT_BOT_STATE, details);
   }
 
   // 4. Announce new events + expand occurrences
@@ -154,6 +174,10 @@ export default {
       });
     }
 
+    if (request.method === "GET" && url.pathname === "/calendar.ics") {
+      return handleCalendar(env, url);
+    }
+
     if (request.method === "POST" && url.pathname === "/seed") {
       const key = url.searchParams.get("key");
       if (key !== env.SEED_SECRET) {
@@ -177,6 +201,62 @@ export default {
     ctx.waitUntil(runPipeline(env));
   },
 };
+
+async function handleCalendar(env: Env, url: URL): Promise<Response> {
+  const externals = env.EXTERNAL_CALENDARS ?? [];
+  const allowed = new Set(["club", ...externals.map((e) => e.token)]);
+
+  const raw = url.searchParams.get("include");
+  const requested = raw
+    ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [...allowed];
+
+  for (const t of requested) {
+    if (!allowed.has(t)) {
+      return new Response(`unknown include token: ${t}`, { status: 400 });
+    }
+  }
+  const include = new Set(requested);
+
+  const nowUtc = formatNowUtc();
+  const veventChunks: string[] = [];
+  const vtzChunks: string[] = [];
+
+  if (include.has("club")) {
+    const events = await readClubSnapshot(env.EVENT_BOT_STATE);
+    for (const event of events) {
+      veventChunks.push(
+        ...clubEventVEvents(event, { clubUrl: env.STRAVA_CLUB_URL, nowUtc }),
+      );
+    }
+  }
+
+  const externalsToFetch = externals.filter((e) => include.has(e.token));
+  const slices = await Promise.all(
+    externalsToFetch.map(async (ext) => {
+      const text = await fetchExternalIcs(env.EVENT_BOT_STATE, ext.url);
+      return transformExternalIcs(text, ext.token);
+    }),
+  );
+
+  for (const slice of slices) {
+    if (slice.vtimezones) vtzChunks.push(slice.vtimezones);
+    veventChunks.push(...slice.vevents);
+  }
+
+  const body = buildVCalendar({
+    vtimezones: vtzChunks.join("\r\n"),
+    vevents: veventChunks,
+  });
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "text/calendar; charset=utf-8",
+      "cache-control": "public, max-age=900",
+    },
+  });
+}
 
 function summarize(info: OccurrenceInfo) {
   return {

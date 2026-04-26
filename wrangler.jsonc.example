@@ -8,10 +8,21 @@
   "triggers": {
     "crons": ["0 * * * *"]
   },
+  // Optional: bind a custom domain (CNAME proxied through Cloudflare)
+  // for nicer subscribe URLs like https://calendar.your-domain.org/calendar.ics
+  // "routes": [
+  //   { "pattern": "calendar.your-domain.org", "custom_domain": true }
+  // ],
   "vars": {
     "STRAVA_CLUB_ID": "YOUR_CLUB_ID",
     "STRAVA_CLUB_URL": "https://www.strava.com/clubs/your-club-slug",
-    "MODE": "test"
+    "MODE": "test",
+    // Optional: external ICS feeds merged into /calendar.ics.
+    // Each entry: { token, name, url }. `token` is the ?include= filter
+    // and the CATEGORIES tag on each merged event.
+    "EXTERNAL_CALENDARS": [
+      // { "token": "road", "name": "PA Road Racing", "url": "https://calendar.google.com/calendar/ical/CAL_ID/public/basic.ics" }
+    ]
   },
   "kv_namespaces": [
     {

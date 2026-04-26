@@ -11,6 +11,7 @@ Cloudflare Worker that polls the Strava API for a club's group events, computes 
 - **Test/live mode** with separate webhook channels and non-overlapping KV key spaces
 - **`/preview` endpoint** for dry-run debugging (no posts, no state changes)
 - **`/seed` endpoint** to mark current events as already-posted on first deploy
+- **`/calendar.ics` endpoint** publishes club events plus optional external feeds (e.g. PA Road, MUT, XC) for members to subscribe
 
 ## Setup
 
@@ -129,7 +130,25 @@ npm run dev
 
 6. **Dedup + remind**: Checks KV for each occurrence. If not yet posted, sends a Discord reminder embed and marks it posted with a 30-day TTL.
 
-## Event routing
+## Calendar feed
+
+`GET /calendar.ics` returns an iCalendar feed members can subscribe to in Google Calendar, Apple Calendar, etc.
+
+- Club events are read from the snapshot the cron pipeline writes after each run (so the public route never touches Strava).
+- External feeds are configured via `EXTERNAL_CALENDARS` in `wrangler.jsonc` (any public ICS URL — Google Calendar, USATF associations, other clubs, etc).
+- Each external feed is fetched and cached in KV for 1 hour to avoid hammering upstream.
+
+Filter with `?include=`:
+
+```
+/calendar.ics                       # club + every external (default)
+/calendar.ics?include=club          # just our Strava events
+/calendar.ics?include=road,mut,xc   # just external race feeds
+```
+
+Each merged event carries `CATEGORIES:<token>` so calendar clients can filter or color-code by source.
+
+
 
 - `women_only === true` -> ladies webhook
 - Everything else -> main events webhook
