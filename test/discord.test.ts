@@ -33,7 +33,8 @@ describe("buildEmbed", () => {
       (f: { name: string }) => f.name === "When",
     );
     assert.ok(whenField);
-    const unix = Math.floor(occ.instant.epochSeconds);
+    const unix = Math.floor(occ.instant.epochMilliseconds / 1000);
+    assert.ok(Number.isFinite(unix), "expected unix to be a finite integer");
     assert.match(whenField.value, new RegExp(`<t:${unix}:F>`));
     assert.match(whenField.value, new RegExp(`<t:${unix}:R>`));
   });
