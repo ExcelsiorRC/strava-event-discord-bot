@@ -87,6 +87,17 @@ export function buildAnnouncementEmbed(
 
   const fields: DiscordField[] = [];
 
+  const nextOccurrence = event.upcoming_occurrences[0];
+  if (nextOccurrence) {
+    const unix = Math.floor(new Date(nextOccurrence).getTime() / 1000);
+    if (Number.isFinite(unix)) {
+      fields.push({
+        name: "When",
+        value: `<t:${unix}:F> (<t:${unix}:R>)`,
+      });
+    }
+  }
+
   const schedule = formatSchedule(event);
   if (schedule) {
     fields.push({ name: "Schedule", value: schedule });
