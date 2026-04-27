@@ -140,7 +140,7 @@ npm run dev
 - External feeds are configured via `EXTERNAL_CALENDARS` in `wrangler.jsonc` (any public ICS URL — Google Calendar, USATF associations, other clubs, etc).
 - Each external feed is fetched and cached in KV for 1 hour.
 - Women-only club events are prefixed with `🚺` in the SUMMARY.
-- Cron only fetches details for events with an occurrence in the last `RECENT_EVENT_MONTHS` (6) months. Older events that were already in the snapshot stay; ones removed from Strava entirely are dropped.
+- The cron fetches details for every event Strava returns (the list endpoint's occurrence data is stale for recurring events, so we can't filter at that stage without losing weekly events). The 6-month recency filter is applied at ICS render time — older one-offs are hidden from the feed but stay in the snapshot. Events removed from Strava entirely are dropped.
 - Edge-cached via `caches.default` for 24h. The cache key includes a `calendar:version` that gets bumped only when the snapshot content actually changes — so updates appear within seconds of the next cron, but unchanged crons leave the cache warm.
 
 Filter with `?include=`:
