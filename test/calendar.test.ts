@@ -6,6 +6,7 @@ import {
   clubEventVEvents,
   buildVCalendar,
   calendarName,
+  LA_VTIMEZONE,
   persistClubSnapshot,
   readClubSnapshot,
   CLUB_SNAPSHOT_KEY,
@@ -265,6 +266,40 @@ describe("buildVCalendar", () => {
     const ics = buildVCalendar({ vevents: [] });
     assert.ok(ics.includes("\r\nX-APPLE-CALENDAR-COLOR:#FDFAD2\r\n"));
     assert.ok(ics.includes("\r\nCOLOR:#FDFAD2\r\n"));
+  });
+});
+
+describe("LA_VTIMEZONE", () => {
+  it("declares TZID:America/Los_Angeles", () => {
+    assert.match(LA_VTIMEZONE, /\r\nTZID:America\/Los_Angeles\r\n/);
+  });
+
+  it("opens with BEGIN:VTIMEZONE and closes with END:VTIMEZONE", () => {
+    assert.match(LA_VTIMEZONE, /^BEGIN:VTIMEZONE\r\n/);
+    assert.match(LA_VTIMEZONE, /\r\nEND:VTIMEZONE$/);
+  });
+
+  it("defines DAYLIGHT transitioning -0800 → -0700 on the 2nd Sunday of March", () => {
+    assert.match(LA_VTIMEZONE, /BEGIN:DAYLIGHT[\s\S]+END:DAYLIGHT/);
+    assert.match(LA_VTIMEZONE, /TZOFFSETFROM:-0800/);
+    assert.match(LA_VTIMEZONE, /TZOFFSETTO:-0700/);
+    assert.match(LA_VTIMEZONE, /RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU/);
+    assert.match(LA_VTIMEZONE, /TZNAME:PDT/);
+  });
+
+  it("defines STANDARD transitioning -0700 → -0800 on the 1st Sunday of November", () => {
+    assert.match(LA_VTIMEZONE, /BEGIN:STANDARD[\s\S]+END:STANDARD/);
+    assert.match(LA_VTIMEZONE, /TZOFFSETFROM:-0700/);
+    assert.match(LA_VTIMEZONE, /TZOFFSETTO:-0800/);
+    assert.match(LA_VTIMEZONE, /RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU/);
+    assert.match(LA_VTIMEZONE, /TZNAME:PST/);
+  });
+
+  it("uses CRLF line endings throughout (RFC 5545)", () => {
+    const lines = LA_VTIMEZONE.split("\r\n");
+    assert.ok(lines.length >= 15, "should have a proper multi-line block");
+    // No bare \n inside the block — a stray \n would fail strict parsers
+    assert.equal(LA_VTIMEZONE.match(/[^\r]\n/g), null);
   });
 });
 

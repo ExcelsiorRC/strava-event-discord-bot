@@ -249,6 +249,37 @@ describe("GET /calendar.ics", () => {
     assert.equal(res.status, 403);
   });
 
+  it("includes a VTIMEZONE block for America/Los_Angeles when club events are present", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request("https://x/calendar.ics?key=cal-secret-xyz&include=club"),
+      createEnv(kv),
+      ctx,
+    );
+    const body = await res.text();
+    assert.ok(body.includes("BEGIN:VTIMEZONE"));
+    assert.ok(body.includes("TZID:America/Los_Angeles"));
+    // VTIMEZONE must precede VEVENT (RFC 5545)
+    const tzIdx = body.indexOf("BEGIN:VTIMEZONE");
+    const veIdx = body.indexOf("BEGIN:VEVENT");
+    assert.ok(tzIdx > 0 && tzIdx < veIdx);
+  });
+
+  it("omits the club VTIMEZONE when only race feeds are requested", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request(
+        "https://x/calendar.ics?key=cal-secret-xyz&include=road,mut",
+      ),
+      createEnv(kv),
+      ctx,
+    );
+    const body = await res.text();
+    assert.ok(!body.includes("TZID:America/Los_Angeles"));
+  });
+
   it("default feed gets the short ERC name", async () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);
