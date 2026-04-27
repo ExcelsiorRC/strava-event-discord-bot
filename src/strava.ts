@@ -109,7 +109,14 @@ export async function fetchEvents(
     all.push(...items);
     if (items.length < PER_PAGE) break;
   }
-  return all;
+  // Strava occasionally repeats an event across the page boundary; dedupe
+  // by id so the pipeline doesn't double-post the same occurrence.
+  const seen = new Set<string>();
+  return all.filter((e) => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
 }
 
 function parseEventListItems(text: string): EventListItem[] {
