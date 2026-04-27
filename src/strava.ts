@@ -87,7 +87,14 @@ export async function fetchEvents(
   accessToken: string,
   clubId: string,
 ): Promise<EventListItem[]> {
+  // Strava's club group_events list endpoint ignores `page` and `per_page`
+  // for some clubs and returns the full set on every request. If we naively
+  // paginated until items.length < PER_PAGE, we'd loop MAX_PAGES times and
+  // append the full list 10× — every event gets duplicated 10×, which after
+  // detail expansion would post each reminder 10× to Discord. Instead, break
+  // as soon as a page contributes no new ids, and dedupe the accumulator.
   const all: EventListItem[] = [];
+  const seen = new Set<string>();
   for (let page = 1; page <= MAX_PAGES; page++) {
     const response = await fetch(
       `${STRAVA_API}/clubs/${clubId}/group_events?per_page=${PER_PAGE}&page=${page}`,
@@ -106,17 +113,16 @@ export async function fetchEvents(
     }
     const text = await response.text();
     const items = parseEventListItems(text);
-    all.push(...items);
-    if (items.length < PER_PAGE) break;
+    let newIds = 0;
+    for (const e of items) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      all.push(e);
+      newIds++;
+    }
+    if (newIds === 0 || items.length < PER_PAGE) break;
   }
-  // Strava occasionally repeats an event across the page boundary; dedupe
-  // by id so the pipeline doesn't double-post the same occurrence.
-  const seen = new Set<string>();
-  return all.filter((e) => {
-    if (seen.has(e.id)) return false;
-    seen.add(e.id);
-    return true;
-  });
+  return all;
 }
 
 function parseEventListItems(text: string): EventListItem[] {
