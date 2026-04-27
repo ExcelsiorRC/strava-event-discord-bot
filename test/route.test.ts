@@ -249,6 +249,32 @@ describe("GET /calendar.ics", () => {
     assert.equal(res.status, 403);
   });
 
+  it("default feed gets the short ERC name", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request("https://x/calendar.ics?key=cal-secret-xyz"),
+      createEnv(kv),
+      ctx,
+    );
+    const body = await res.text();
+    assert.ok(body.includes("\r\nX-WR-CALNAME:ERC\r\n"));
+  });
+
+  it("?include=road,mut produces the derived name", async () => {
+    const kv = new MemoryKV();
+    await seedSnapshot(kv);
+    const res = await worker.fetch(
+      new Request(
+        "https://x/calendar.ics?key=cal-secret-xyz&include=road,mut",
+      ),
+      createEnv(kv),
+      ctx,
+    );
+    const body = await res.text();
+    assert.ok(body.includes("\r\nX-WR-CALNAME:ERC PA Road + MUT\r\n"));
+  });
+
   it("sets a Cache-Control header for client/CDN caching", async () => {
     const kv = new MemoryKV();
     await seedSnapshot(kv);

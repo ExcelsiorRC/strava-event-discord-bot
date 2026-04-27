@@ -23,6 +23,7 @@ import {
   readClubSnapshot,
   clubEventVEvents,
   buildVCalendar,
+  calendarName,
   formatNowUtc,
   getCalendarVersion,
 } from "./calendar.ts";
@@ -366,6 +367,7 @@ async function handleCalendar(env: Env, url: URL): Promise<Response> {
   const body = buildVCalendar({
     vtimezones: vtzChunks.join("\r\n"),
     vevents: veventChunks,
+    name: calendarName(raw === null ? null : include),
   });
 
   return new Response(body, {
