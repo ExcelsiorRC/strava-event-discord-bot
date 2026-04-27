@@ -148,6 +148,25 @@ describe("fetchEvents", () => {
     assert.equal(events.length, 202);
   });
 
+  it("stops paginating when a page returns only events we've already seen", async () => {
+    // Real Strava behaviour for some clubs: `page` and `per_page` are ignored
+    // and every request returns the full set. Without an early break we'd
+    // hammer the API MAX_PAGES times for nothing.
+    const fullSet = Array.from({ length: 259 }, (_, i) => ({
+      id: 1000 + i,
+      upcoming_occurrences: [],
+    }));
+    let calls = 0;
+    mockFetch(async () => {
+      calls++;
+      return new Response(JSON.stringify(fullSet), { status: 200 });
+    });
+    const events = await fetchEvents("token", "5555");
+    assert.equal(events.length, 259);
+    assert.equal(new Set(events.map((e) => e.id)).size, 259);
+    assert.equal(calls, 2, "should stop after 2nd page contributes 0 new ids");
+  });
+
   it("returns id + upcoming_occurrences for each list item", async () => {
     mockFetch(async () => {
       return new Response(
