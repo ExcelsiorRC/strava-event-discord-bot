@@ -22,6 +22,7 @@ This repository is a Cloudflare Worker that polls Strava for club group events a
 - We fetch details for every event Strava returns (the list endpoint's `upcoming_occurrences` is stale for recurring events, so list-stage filtering would drop legit weekly events like Dawn Patrol). The 6-month recency filter is applied at ICS render time only (`ONE_OFF_LOOKBACK_MONTHS` in `calendar.ts`).
 - Snapshot is sticky: aged-out events stay in the calendar feed; events deleted from Strava get dropped
 - `calendar:version` is bumped only when snapshot content actually changes (sorted-by-id JSON compare); cache key includes the version
+- Calendar `X-WR-CALNAME` is derived from `?include=` via `calendarName()` in `calendar.ts` — keep the per-slice naming so subscribers see "ERC + PA Road" instead of the raw URL
 - Per-run budget: `MAX_API_CALLS_PER_RUN=30` uncached fetches in `FETCH_CONCURRENCY=5`-wide batches
 - Workers Standard plan is required (the Free plan's 50-subrequest cap can't fit a ~250-event club); update wrangler.jsonc only to lower limits, defaults are sufficient
 

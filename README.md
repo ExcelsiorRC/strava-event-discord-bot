@@ -142,6 +142,7 @@ npm run dev
 - Women-only club events are prefixed with `🚺` in the SUMMARY.
 - The cron fetches details for every event Strava returns (the list endpoint's occurrence data is stale for recurring events, so we can't filter at that stage without losing weekly events). The 6-month recency filter is applied at ICS render time — older one-offs are hidden from the feed but stay in the snapshot. Events removed from Strava entirely are dropped.
 - Edge-cached via `caches.default` for 24h. The cache key includes a `calendar:version` that gets bumped only when the snapshot content actually changes — so updates appear within seconds of the next cron, but unchanged crons leave the cache warm.
+- Calendar metadata: `X-WR-CALNAME` is derived from `?include=` (`ERC` by default, `ERC PA Races` for all races, `ERC + PA Road + MUT` for mixed slices); `X-WR-TIMEZONE` is `America/Los_Angeles`; `X-APPLE-CALENDAR-COLOR`/`COLOR` is `#FDFAD2` (pale yellow).
 
 Filter with `?include=`:
 
