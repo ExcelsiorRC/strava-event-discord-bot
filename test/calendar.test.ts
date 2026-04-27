@@ -5,6 +5,7 @@ import {
   foldIcsLine,
   clubEventVEvents,
   buildVCalendar,
+  calendarName,
   persistClubSnapshot,
   readClubSnapshot,
   CLUB_SNAPSHOT_KEY,
@@ -243,6 +244,75 @@ describe("buildVCalendar", () => {
     assert.ok(ics.includes("BEGIN:VCALENDAR\r\n"));
     assert.ok(ics.includes("END:VCALENDAR\r\n"));
     assert.ok(!ics.includes("BEGIN:VEVENT"));
+  });
+
+  it("emits a default X-WR-CALNAME when no name is passed", () => {
+    const ics = buildVCalendar({ vevents: [] });
+    assert.ok(ics.includes("\r\nX-WR-CALNAME:ERC\r\n"));
+  });
+
+  it("emits the supplied X-WR-CALNAME", () => {
+    const ics = buildVCalendar({ vevents: [], name: "ERC + PA Races" });
+    assert.ok(ics.includes("\r\nX-WR-CALNAME:ERC + PA Races\r\n"));
+  });
+
+  it("emits X-WR-TIMEZONE for America/Los_Angeles by default", () => {
+    const ics = buildVCalendar({ vevents: [] });
+    assert.ok(ics.includes("\r\nX-WR-TIMEZONE:America/Los_Angeles\r\n"));
+  });
+
+  it("emits both X-APPLE-CALENDAR-COLOR and COLOR with the pale-yellow hex", () => {
+    const ics = buildVCalendar({ vevents: [] });
+    assert.ok(ics.includes("\r\nX-APPLE-CALENDAR-COLOR:#FDFAD2\r\n"));
+    assert.ok(ics.includes("\r\nCOLOR:#FDFAD2\r\n"));
+  });
+});
+
+describe("calendarName", () => {
+  const set = (...xs: string[]) => new Set(xs);
+
+  it("default (no include param) → ERC", () => {
+    assert.equal(calendarName(null), "ERC");
+  });
+
+  it("club only → ERC", () => {
+    assert.equal(calendarName(set("club")), "ERC");
+  });
+
+  it("all 3 PA races (no club) → ERC PA Races", () => {
+    assert.equal(calendarName(set("road", "mut", "xc")), "ERC PA Races");
+  });
+
+  it("single race tokens get full PA prefix", () => {
+    assert.equal(calendarName(set("road")), "ERC PA Road");
+    assert.equal(calendarName(set("mut")), "ERC PA MUT");
+    assert.equal(calendarName(set("xc")), "ERC PA XC");
+  });
+
+  it("two races (no club) drop the PA prefix on the second", () => {
+    assert.equal(calendarName(set("road", "mut")), "ERC PA Road + MUT");
+    assert.equal(calendarName(set("road", "xc")), "ERC PA Road + XC");
+    assert.equal(calendarName(set("mut", "xc")), "ERC PA MUT + XC");
+  });
+
+  it("club + all 3 races → ERC + PA Races", () => {
+    assert.equal(
+      calendarName(set("club", "road", "mut", "xc")),
+      "ERC + PA Races",
+    );
+  });
+
+  it("club + one race → ERC + PA <Race>", () => {
+    assert.equal(calendarName(set("club", "road")), "ERC + PA Road");
+    assert.equal(calendarName(set("club", "mut")), "ERC + PA MUT");
+    assert.equal(calendarName(set("club", "xc")), "ERC + PA XC");
+  });
+
+  it("club + two races → ERC + PA Road + MUT", () => {
+    assert.equal(
+      calendarName(set("club", "road", "mut")),
+      "ERC + PA Road + MUT",
+    );
   });
 });
 

@@ -189,6 +189,8 @@ function renderVEvent(f: VEventFields): string {
 export interface VCalendarParts {
   vtimezones?: string;
   vevents: string[];
+  /** Display name shown by calendar clients on subscribe. Defaults to "ERC". */
+  name?: string;
 }
 
 export const CLUB_SNAPSHOT_KEY = "calendar:club:snapshot";
@@ -253,16 +255,47 @@ export async function getCalendarVersion(kv: KVNamespace): Promise<string> {
   return (await kv.get(CALENDAR_VERSION_KEY)) ?? "0";
 }
 
+const CAL_COLOR = "#FDFAD2"; // pale yellow
+const CAL_TIMEZONE = "America/Los_Angeles";
+
 export function buildVCalendar(parts: VCalendarParts): string {
+  const name = parts.name ?? "ERC";
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     `PRODID:${PRODID}`,
     "CALSCALE:GREGORIAN",
+    `X-WR-CALNAME:${escapeIcsText(name)}`,
+    `X-WR-TIMEZONE:${CAL_TIMEZONE}`,
+    `X-APPLE-CALENDAR-COLOR:${CAL_COLOR}`,
+    `COLOR:${CAL_COLOR}`,
   ];
   const body: string[] = [];
   if (parts.vtimezones) body.push(parts.vtimezones);
   for (const v of parts.vevents) body.push(v);
   body.push("END:VCALENDAR");
   return lines.join("\r\n") + "\r\n" + body.join("\r\n") + "\r\n";
+}
+
+const RACE_LABELS: Record<string, string> = {
+  road: "Road",
+  mut: "MUT",
+  xc: "XC",
+};
+const RACE_TOKENS = ["road", "mut", "xc"] as const;
+
+/**
+ * Calendar display name derived from the `?include=` filter. Null means the
+ * caller didn't pass `include` at all — short "ERC" is friendlier as the
+ * default subscribe experience than spelling out every token.
+ */
+export function calendarName(includes: ReadonlySet<string> | null): string {
+  if (!includes) return "ERC";
+  const races = RACE_TOKENS.filter((t) => includes.has(t));
+  if (races.length === 0) return "ERC";
+  const racePart =
+    races.length === RACE_TOKENS.length
+      ? "PA Races"
+      : `PA ${races.map((t) => RACE_LABELS[t]).join(" + ")}`;
+  return includes.has("club") ? `ERC + ${racePart}` : `ERC ${racePart}`;
 }
