@@ -76,14 +76,28 @@ describe("buildEmbed", () => {
     assert.equal(whereField, undefined);
   });
 
-  it("includes Where field when address is present", () => {
+  it("renders coord-only addresses as a clickable Google Maps masked link", () => {
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
     const embed = buildEmbed(weeklyTueFri, occ, TEST_CLUB_URL);
     const whereField = embed.fields.find(
       (f: { name: string }) => f.name === "Where",
     );
     assert.ok(whereField);
-    assert.equal(whereField.value, "(37.77, -122.46)");
+    assert.equal(
+      whereField.value,
+      "[(37.77, -122.46)](https://www.google.com/maps?q=37.77,-122.46)",
+    );
+  });
+
+  it("leaves human-readable addresses untouched in Where", () => {
+    const realAddr = { ...weeklyTueFri, address: "City Stadium" };
+    const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
+    const embed = buildEmbed(realAddr, occ, TEST_CLUB_URL);
+    const whereField = embed.fields.find(
+      (f: { name: string }) => f.name === "Where",
+    );
+    assert.ok(whereField);
+    assert.equal(whereField.value, "City Stadium");
   });
 });
 

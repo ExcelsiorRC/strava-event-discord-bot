@@ -6,6 +6,7 @@ import {
   clubEventVEvents,
   buildVCalendar,
   calendarName,
+  formatLocation,
   LA_VTIMEZONE,
   persistClubSnapshot,
   readClubSnapshot,
@@ -103,12 +104,24 @@ describe("clubEventVEvents — weekly events", () => {
     );
   });
 
-  it("escapes special chars in LOCATION (comma)", () => {
+  it("converts coord-only addresses into a Google Maps URL", () => {
     const blocks = clubEventVEvents(weeklyTueFri, {
       clubUrl: CLUB_URL,
       nowUtc: FIXED_NOW,
     });
-    assert.equal(findLine(blocks[0], "LOCATION:"), "LOCATION:(37.77\\, -122.46)");
+    // 37.77,-122.46 — comma in the URL gets backslash-escaped per RFC 5545
+    assert.equal(
+      findLine(blocks[0], "LOCATION:"),
+      "LOCATION:https://www.google.com/maps?q=37.77\\,-122.46",
+    );
+  });
+
+  it("leaves human-readable addresses unchanged in LOCATION", () => {
+    const blocks = clubEventVEvents(biweeklyMonday, {
+      clubUrl: CLUB_URL,
+      nowUtc: FIXED_NOW,
+    });
+    assert.equal(findLine(blocks[0], "LOCATION:"), "LOCATION:City Stadium");
   });
 
   it("women_only weekly events still tagged CATEGORIES:club", () => {
@@ -266,6 +279,37 @@ describe("buildVCalendar", () => {
     const ics = buildVCalendar({ vevents: [] });
     assert.ok(ics.includes("\r\nX-APPLE-CALENDAR-COLOR:#FDFAD2\r\n"));
     assert.ok(ics.includes("\r\nCOLOR:#FDFAD2\r\n"));
+  });
+});
+
+describe("formatLocation", () => {
+  it("rewrites '(lat, lon)' coordinate strings as a Google Maps URL", () => {
+    assert.equal(
+      formatLocation("(37.7714, -122.4592)"),
+      "https://www.google.com/maps?q=37.7714,-122.4592",
+    );
+  });
+
+  it("handles the form without spaces", () => {
+    assert.equal(
+      formatLocation("(37.7714,-122.4592)"),
+      "https://www.google.com/maps?q=37.7714,-122.4592",
+    );
+  });
+
+  it("leaves real addresses untouched", () => {
+    assert.equal(formatLocation("Stow Lake, Golden Gate Park"), "Stow Lake, Golden Gate Park");
+    assert.equal(formatLocation("123 Main St"), "123 Main St");
+  });
+
+  it("returns empty string for empty input", () => {
+    assert.equal(formatLocation(""), "");
+  });
+
+  it("only matches when both numbers are present and parens-wrapped", () => {
+    // partial-looking strings shouldn't get rewritten
+    assert.equal(formatLocation("37.77, -122.46"), "37.77, -122.46");
+    assert.equal(formatLocation("(only one number)"), "(only one number)");
   });
 });
 
