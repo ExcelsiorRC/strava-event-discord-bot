@@ -26,6 +26,7 @@ import {
   calendarName,
   formatNowUtc,
   getCalendarVersion,
+  LA_VTIMEZONE,
 } from "./calendar.ts";
 import { fetchExternalIcs, transformExternalIcs } from "./external.ts";
 import type { EventDetail } from "./types.ts";
@@ -344,6 +345,7 @@ async function handleCalendar(env: Env, url: URL): Promise<Response> {
 
   if (include.has("club")) {
     const events = await readClubSnapshot(env.EVENT_BOT_STATE);
+    if (events.length > 0) vtzChunks.push(LA_VTIMEZONE);
     for (const event of events) {
       veventChunks.push(
         ...clubEventVEvents(event, { clubUrl: env.STRAVA_CLUB_URL, nowUtc }),

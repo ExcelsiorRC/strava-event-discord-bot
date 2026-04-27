@@ -258,6 +258,32 @@ export async function getCalendarVersion(kv: KVNamespace): Promise<string> {
 const CAL_COLOR = "#FDFAD2"; // pale yellow
 const CAL_TIMEZONE = "America/Los_Angeles";
 
+/**
+ * Self-contained VTIMEZONE for America/Los_Angeles. Strict ICS parsers
+ * (notably Google Calendar) want the timezone defined inline rather than
+ * relying on their own tzdb lookup of the bare TZID. Encodes the post-2007
+ * US DST schedule, which is what every club event in 2025+ runs under.
+ */
+export const LA_VTIMEZONE = [
+  "BEGIN:VTIMEZONE",
+  "TZID:America/Los_Angeles",
+  "BEGIN:DAYLIGHT",
+  "DTSTART:20070311T020000",
+  "TZOFFSETFROM:-0800",
+  "TZOFFSETTO:-0700",
+  "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+  "TZNAME:PDT",
+  "END:DAYLIGHT",
+  "BEGIN:STANDARD",
+  "DTSTART:20071104T020000",
+  "TZOFFSETFROM:-0700",
+  "TZOFFSETTO:-0800",
+  "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU",
+  "TZNAME:PST",
+  "END:STANDARD",
+  "END:VTIMEZONE",
+].join("\r\n");
+
 export function buildVCalendar(parts: VCalendarParts): string {
   const name = parts.name ?? "ERC";
   const lines: string[] = [
