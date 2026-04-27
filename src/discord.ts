@@ -1,11 +1,17 @@
 import type { EventDetail } from "./types.ts";
 import type { Occurrence } from "./recurrence.ts";
+import { formatLocation } from "./calendar.ts";
 
 const COLOR_GENERAL = 0x5865f2; // Discord blurple
 const COLOR_WOMEN = 0xff7f50; // Coral
 const COLOR_NEW = 0x57f287; // Green
 const MAX_DESC_LEN = 400;
 const BOT_USERNAME = "Event Bot";
+
+function formatWhere(address: string): string {
+  const url = formatLocation(address);
+  return url === address ? address : `[${address}](${url})`;
+}
 
 interface DiscordField {
   name: string;
@@ -43,7 +49,7 @@ export function buildEmbed(
   ];
 
   if (event.address) {
-    fields.push({ name: "Where", value: event.address });
+    fields.push({ name: "Where", value: formatWhere(event.address) });
   }
 
   const footer = event.organizing_athlete
@@ -104,7 +110,7 @@ export function buildAnnouncementEmbed(
   }
 
   if (event.address) {
-    fields.push({ name: "Where", value: event.address });
+    fields.push({ name: "Where", value: formatWhere(event.address) });
   }
 
   const footer = event.organizing_athlete
