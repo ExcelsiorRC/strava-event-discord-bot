@@ -66,6 +66,21 @@ function clubSummary(event: EventDetail): string {
   return event.women_only ? `🚺 ${event.title}` : event.title;
 }
 
+const COORD_ONLY = /^\(\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*\)$/;
+
+/**
+ * Strava clubs that don't pin a real address fall back to a "(lat, lon)"
+ * string. Calendar clients don't auto-link that form, so rewrite it as a
+ * Google Maps URL — most clients render URLs in LOCATION as clickable.
+ * Real address strings pass through unchanged so geocoding/map previews
+ * still work.
+ */
+export function formatLocation(address: string): string {
+  const m = address.match(COORD_ONLY);
+  if (!m) return address;
+  return `https://www.google.com/maps?q=${m[1]},${m[2]}`;
+}
+
 // Drop one-off VEVENTs whose occurrence is more than this far in the past so
 // the calendar feed isn't cluttered with years-old workouts. Recurring events
 // are unaffected — they emit a single RRULE that calendar clients expand.
@@ -128,7 +143,7 @@ function renderWeekly(event: EventDetail, opts: ClubEventOpts): string {
     dtend: `DTEND;TZID=${event.zone}:${endCompact}`,
     rrule,
     summary: clubSummary(event),
-    location: event.address,
+    location: formatLocation(event.address),
     description: event.description,
     url: `${opts.clubUrl}/group_events/${event.id}`,
     categories: "club",
@@ -148,7 +163,7 @@ function renderOneOff(
     dtstart: `DTSTART:${compactUtc(start)}`,
     dtend: `DTEND:${compactUtc(end)}`,
     summary: clubSummary(event),
-    location: event.address,
+    location: formatLocation(event.address),
     description: event.description,
     url: `${opts.clubUrl}/group_events/${event.id}`,
     categories: "club",
