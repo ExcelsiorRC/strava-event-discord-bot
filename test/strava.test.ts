@@ -122,6 +122,32 @@ describe("fetchEvents", () => {
     );
   });
 
+  it("deduplicates events that appear on multiple pages", async () => {
+    // Strava's list endpoint occasionally returns the same event on adjacent
+    // pages at the pagination boundary. If we don't dedupe, the pipeline
+    // expands the same occurrence twice and double-posts to Discord.
+    const page1 = Array.from({ length: 200 }, (_, i) => ({
+      id: 1000 + i,
+      upcoming_occurrences: [],
+    }));
+    const page2 = [
+      { id: 1199, upcoming_occurrences: [] }, // duplicate of page 1 last item
+      { id: 1200, upcoming_occurrences: [] },
+      { id: 1201, upcoming_occurrences: [] },
+    ];
+    let call = 0;
+    mockFetch(async () => {
+      call++;
+      return new Response(JSON.stringify(call === 1 ? page1 : page2), {
+        status: 200,
+      });
+    });
+    const events = await fetchEvents("token", "5555");
+    const ids = events.map((e) => e.id);
+    assert.equal(new Set(ids).size, ids.length, "ids must be unique");
+    assert.equal(events.length, 202);
+  });
+
   it("returns id + upcoming_occurrences for each list item", async () => {
     mockFetch(async () => {
       return new Response(
