@@ -73,6 +73,10 @@ interface PipelineOptions {
 // Cap API calls per run so each cron tick completes within Worker time limits.
 // Cache hits don't count. With this cap the cache fully warms over a few cycles.
 const MAX_API_CALLS_PER_RUN = 30;
+// When a freshly announced event has its next occurrence within this window,
+// suppress the 24h reminder — otherwise the team sees the announcement and a
+// near-identical reminder a few hours later that reads as a duplicate.
+const SUPPRESS_REMINDER_AFTER_ANNOUNCE_HOURS = 48;
 // Run uncached detail fetches this many at a time. Strava's rate limit is
 // ~13 req/sec sustained so 5-wide bursts are well within bounds, and
 // parallelism keeps the loop's wall time under the 30s HTTP cap so /preview
@@ -191,6 +195,28 @@ export async function runPipeline(
         const webhookUrl = getWebhookUrl(env, detail, mode);
         const embed = buildAnnouncementEmbed(detail, env.STRAVA_CLUB_URL);
         await postToDiscord(webhookUrl, embed);
+        const nextIso = detail.upcoming_occurrences[0];
+        if (nextIso) {
+          try {
+            const inst = Temporal.Instant.from(nextIso);
+            const cutoff = now.add({
+              hours: SUPPRESS_REMINDER_AFTER_ANNOUNCE_HOURS,
+            });
+            if (
+              Temporal.Instant.compare(inst, now) >= 0 &&
+              Temporal.Instant.compare(inst, cutoff) <= 0
+            ) {
+              await markPosted(
+                env.EVENT_BOT_STATE,
+                mode,
+                detail.id,
+                inst.toString(),
+              );
+            }
+          } catch {
+            // malformed iso — fall through and let the normal reminder fire
+          }
+        }
       }
       await markEventSeen(env.EVENT_BOT_STATE, mode, detail.id);
       justAnnounced = announce;

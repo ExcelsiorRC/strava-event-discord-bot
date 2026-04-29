@@ -153,6 +153,127 @@ describe("runPipeline", () => {
     assert.equal(posted, "1");
   });
 
+  it("suppresses 24h reminder when announcement happens within 48h of occurrence", async () => {
+    // Real-world failure (2026-04-29): event created at 05:01 with the
+    // occurrence ~28h away — outside the 25h reminder window — so the
+    // announcement fired and the loop pre-marked nothing. A few hours later
+    // the occurrence drifted into the 25h window and a near-identical
+    // reminder fired. To users it looked like a duplicate.
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    const env = createEnv(kv);
+    const discordCalls: { url: string; body: string }[] = [];
+
+    // One-off event 30h out from "now" — outside reminder window, inside
+    // suppression window.
+    const oneOffList = JSON.stringify([
+      {
+        id: 200,
+        resource_state: 2,
+        title: "Track Night",
+        upcoming_occurrences: ["2026-04-30T16:00:00Z"],
+      },
+    ]);
+    const oneOffDetail = JSON.stringify({
+      id: 200,
+      resource_state: 3,
+      title: "Track Night",
+      description: "Speed work.",
+      women_only: false,
+      private: false,
+      zone: "America/Los_Angeles",
+      address: "Kezar Stadium",
+      frequency: null,
+      upcoming_occurrences: ["2026-04-30T16:00:00Z"],
+      organizing_athlete: { firstname: "Noel", lastname: "Bautista" },
+    });
+
+    mockFetch(async (url: string, init?: RequestInit) => {
+      if (url.includes("/oauth/token")) {
+        return new Response(TOKEN_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(oneOffList, { status: 200 });
+      }
+      if (url.includes("/group_events/200")) {
+        return new Response(oneOffDetail, { status: 200 });
+      }
+      if (url.includes("discord.test")) {
+        discordCalls.push({ url, body: init?.body as string });
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    // now = 2026-04-29T10:00:00Z, event at 2026-04-30T16:00:00Z → 30h away
+    await runPipeline(env, { nowOverride: "2026-04-29T10:00:00Z" });
+
+    // Single Discord call (announcement); no separate reminder later
+    assert.equal(discordCalls.length, 1);
+    const body = JSON.parse(discordCalls[0].body);
+    assert.ok(body.embeds[0].title.startsWith("New Event:"));
+
+    // Posted key set so the next cron tick (when occurrence enters the
+    // reminder window) skips re-posting
+    const posted = await kv.get("posted:test:200:2026-04-30T16:00:00Z");
+    assert.equal(posted, "1");
+  });
+
+  it("does not suppress reminder when announcement happens > 48h from occurrence", async () => {
+    // Symmetric case: if the event was created well in advance, the team
+    // has likely forgotten the announcement by the time the event nears,
+    // so the 24h reminder is genuinely useful.
+    const kv = new MemoryKV();
+    await kv.put("strava:refresh_token", "initial_refresh");
+    const env = createEnv(kv);
+
+    // One-off event 5 days out
+    const farList = JSON.stringify([
+      {
+        id: 300,
+        resource_state: 2,
+        title: "Long Run",
+        upcoming_occurrences: ["2026-05-04T15:00:00Z"],
+      },
+    ]);
+    const farDetail = JSON.stringify({
+      id: 300,
+      resource_state: 3,
+      title: "Long Run",
+      description: "20 miler.",
+      women_only: false,
+      private: false,
+      zone: "America/Los_Angeles",
+      address: "Trailhead",
+      frequency: null,
+      upcoming_occurrences: ["2026-05-04T15:00:00Z"],
+      organizing_athlete: { firstname: "A", lastname: "B" },
+    });
+
+    mockFetch(async (url: string, init?: RequestInit) => {
+      if (url.includes("/oauth/token")) {
+        return new Response(TOKEN_RESPONSE, { status: 200 });
+      }
+      if (url.includes("/clubs/") && url.includes("/group_events")) {
+        return new Response(farList, { status: 200 });
+      }
+      if (url.includes("/group_events/300")) {
+        return new Response(farDetail, { status: 200 });
+      }
+      if (url.includes("discord.test")) {
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runPipeline(env, { nowOverride: "2026-04-29T10:00:00Z" });
+
+    // No posted key — reminder should fire normally when the occurrence
+    // enters the 25h window in a few days.
+    const posted = await kv.get("posted:test:300:2026-05-04T15:00:00Z");
+    assert.equal(posted, null);
+  });
+
   it("does not re-post for already-posted occurrences", async () => {
     const kv = new MemoryKV();
     await kv.put("strava:refresh_token", "initial_refresh");
