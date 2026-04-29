@@ -11,7 +11,7 @@ This repository is a Cloudflare Worker that polls Strava for club group events a
 ## Behavior to preserve
 
 - New events get an announcement post (only if they have a future occurrence — see `hasFutureOccurrence`); known events get 24h reminders only. Dead one-offs are still marked seen so we don't reconsider them, just not announced.
-- If an event is announced and has an occurrence within 24h, skip the reminder (no double-post)
+- If an event is announced and its next occurrence is within `SUPPRESS_REMINDER_AFTER_ANNOUNCE_HOURS` (48h), the announcement pre-marks that occurrence posted so the 24h reminder is suppressed — otherwise the team sees two near-identical embeds a few hours apart and reads them as duplicates
 - Seed marks all events as "seen" (no announcement flood) and in-window occurrences as "posted"
 - Event IDs must always be treated as strings (some exceed 2^53)
 - All datetime math uses @js-temporal/polyfill, never native Date
