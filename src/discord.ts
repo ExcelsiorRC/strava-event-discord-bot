@@ -25,7 +25,6 @@ interface DiscordEmbed {
   description: string;
   color: number;
   fields: DiscordField[];
-  footer: { text: string };
   author: { name: string; url: string };
 }
 
@@ -52,9 +51,12 @@ export function buildEmbed(
     fields.push({ name: "Where", value: formatWhere(event.address) });
   }
 
-  const footer = event.organizing_athlete
-    ? `${event.organizing_athlete.firstname} ${event.organizing_athlete.lastname}`
-    : "";
+  if (event.organizing_athlete) {
+    fields.push({
+      name: "Organizer",
+      value: `${event.organizing_athlete.firstname} ${event.organizing_athlete.lastname}`,
+    });
+  }
 
   return {
     title: event.title,
@@ -62,7 +64,6 @@ export function buildEmbed(
     description,
     color: event.women_only ? COLOR_WOMEN : COLOR_GENERAL,
     fields,
-    footer: { text: footer },
     author: { name: "Strava Club Events", url: clubUrl },
   };
 }
@@ -113,9 +114,12 @@ export function buildAnnouncementEmbed(
     fields.push({ name: "Where", value: formatWhere(event.address) });
   }
 
-  const footer = event.organizing_athlete
-    ? `${event.organizing_athlete.firstname} ${event.organizing_athlete.lastname}`
-    : "";
+  if (event.organizing_athlete) {
+    fields.push({
+      name: "Organizer",
+      value: `${event.organizing_athlete.firstname} ${event.organizing_athlete.lastname}`,
+    });
+  }
 
   return {
     title: `New Event: ${event.title}`,
@@ -123,7 +127,6 @@ export function buildAnnouncementEmbed(
     description,
     color: event.women_only ? COLOR_WOMEN : COLOR_NEW,
     fields,
-    footer: { text: footer },
     author: { name: "Strava Club Events", url: clubUrl },
   };
 }

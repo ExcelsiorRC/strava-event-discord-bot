@@ -27,7 +27,6 @@ describe("buildEmbed", () => {
     assert.match(embed.url, /test-club\/group_events\/9990001/);
     assert.equal(embed.description, "Easy pace around the park loop.");
     assert.equal(embed.color, 0x5865f2); // blurple
-    assert.equal(embed.footer.text, "Jane Doe");
 
     const whenField = embed.fields.find(
       (f: { name: string }) => f.name === "When",
@@ -37,6 +36,22 @@ describe("buildEmbed", () => {
     assert.ok(Number.isFinite(unix), "expected unix to be a finite integer");
     assert.match(whenField.value, new RegExp(`<t:${unix}:F>`));
     assert.match(whenField.value, new RegExp(`<t:${unix}:R>`));
+
+    const organizerField = embed.fields.find(
+      (f: { name: string }) => f.name === "Organizer",
+    );
+    assert.ok(organizerField, "Organizer should be a labeled field");
+    assert.equal(organizerField.value, "Jane Doe");
+  });
+
+  it("omits Organizer field when organizing_athlete is missing", () => {
+    const noOrg = { ...weeklyTueFri, organizing_athlete: undefined };
+    const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
+    const embed = buildEmbed(noOrg, occ, TEST_CLUB_URL);
+    const organizerField = embed.fields.find(
+      (f: { name: string }) => f.name === "Organizer",
+    );
+    assert.equal(organizerField, undefined);
   });
 
   it("uses coral color for women-only events", () => {
@@ -164,6 +179,24 @@ describe("buildAnnouncementEmbed", () => {
       (f: { name: string }) => f.name === "Where",
     );
     assert.ok(whereField);
+  });
+
+  it("includes Organizer field with the athlete's full name", () => {
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    const organizerField = embed.fields.find(
+      (f: { name: string }) => f.name === "Organizer",
+    );
+    assert.ok(organizerField);
+    assert.equal(organizerField.value, "Jane Doe");
+  });
+
+  it("omits Organizer field when organizing_athlete is missing", () => {
+    const noOrg = { ...weeklyTueFri, organizing_athlete: undefined };
+    const embed = buildAnnouncementEmbed(noOrg, TEST_CLUB_URL);
+    const organizerField = embed.fields.find(
+      (f: { name: string }) => f.name === "Organizer",
+    );
+    assert.equal(organizerField, undefined);
   });
 });
 
