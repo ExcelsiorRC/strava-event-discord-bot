@@ -11,6 +11,7 @@ Cloudflare Worker that polls the Strava API for a club's group events, computes 
 - **Test/live mode** with separate webhook channels and non-overlapping KV key spaces
 - **`/preview` endpoint** for dry-run debugging (no posts, no state changes)
 - **`/seed` endpoint** to mark current events as already-posted on first deploy
+- **`/run` endpoint** to fire the pipeline manually instead of waiting for the next cron tick
 - **`/calendar.ics` endpoint** publishes club events plus optional external feeds (e.g. PA Road, MUT, XC) for members to subscribe
 
 ## Setup
@@ -51,7 +52,7 @@ cp wrangler.jsonc.example wrangler.jsonc
 ```sh
 wrangler secret put STRAVA_CLIENT_ID
 wrangler secret put STRAVA_CLIENT_SECRET
-wrangler secret put SEED_SECRET        # any random string — protects /preview and /seed
+wrangler secret put SEED_SECRET        # any random string — protects /preview, /seed, /run
                                        # e.g. openssl rand -hex 32
 wrangler secret put CALENDAR_KEY       # any random string — gates /calendar.ics
                                        # share full URL (?key=...) with members
@@ -96,6 +97,12 @@ Seed to prevent the first cron from announcing all existing events and posting r
 
 ```sh
 curl -X POST "https://YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev/seed?key=YOUR_SEED_SECRET"
+```
+
+To fire the pipeline manually (useful right after a deploy, instead of waiting up to an hour for the next cron tick):
+
+```sh
+curl -X POST "https://YOUR_WORKER.YOUR_SUBDOMAIN.workers.dev/run?key=YOUR_SEED_SECRET"
 ```
 
 ### 6. Test -> Live workflow
@@ -166,4 +173,4 @@ Each merged event carries `CATEGORIES:<token>` so calendar clients can filter or
 - **DST safety** — all datetime math uses Temporal API, never `Date`
 - **Rate limits** — Strava: 200 req/15min, 2000/day. Per-cron budget caps uncached fetches at 30 (in 5-wide concurrent batches), spreading first-time warmup across a few cycles. Steady-state with 24h detail cache is ~2 req/cron.
 - **Worker plan** — Standard ($5/mo) is required. Free's 50-subrequest cap can't fit a club with 250+ events; pipeline gets canceled mid-run. Standard defaults (10K subreq, 30s CPU, 30min cron via `waitUntil`) are sufficient — no `limits` config needed.
-- **Endpoints are auth-gated** — `/preview` and `/seed` use `?key=SEED_SECRET`; `/calendar.ics` uses `?key=CALENDAR_KEY` (separate so members can have the calendar URL without admin access)
+- **Endpoints are auth-gated** — `/preview`, `/seed`, and `/run` use `?key=SEED_SECRET`; `/calendar.ics` uses `?key=CALENDAR_KEY` (separate so members can have the calendar URL without admin access)
