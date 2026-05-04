@@ -325,6 +325,18 @@ export default {
         : res;
     }
 
+    if (request.method === "POST" && url.pathname === "/run") {
+      const key = url.searchParams.get("key");
+      if (key !== env.SEED_SECRET) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      const result = await runPipeline(env);
+      return Response.json({
+        posted: result.would_post.map(summarize),
+        already_posted: result.skipped_already_posted.map(summarize),
+      });
+    }
+
     if (request.method === "POST" && url.pathname === "/seed") {
       const key = url.searchParams.get("key");
       if (key !== env.SEED_SECRET) {
