@@ -58,6 +58,9 @@ export function formatNowUtc(): string {
 
 export interface ClubEventOpts {
   clubUrl: string;
+  /** Numeric Strava club ID, used for /group_events/ deep links — Strava 404s
+   *  the slug form for those, only the numeric form lands on the event. */
+  clubId: string;
   /** UTC timestamp string in "YYYYMMDDTHHMMSSZ" form, used for DTSTAMP */
   nowUtc: string;
 }
@@ -145,7 +148,7 @@ function renderWeekly(event: EventDetail, opts: ClubEventOpts): string {
     summary: clubSummary(event),
     location: formatLocation(event.address),
     description: event.description,
-    url: `${opts.clubUrl}/group_events/${event.id}`,
+    url: `https://www.strava.com/clubs/${opts.clubId}/group_events/${event.id}`,
     categories: "club",
   });
 }
@@ -165,7 +168,7 @@ function renderOneOff(
     summary: clubSummary(event),
     location: formatLocation(event.address),
     description: event.description,
-    url: `${opts.clubUrl}/group_events/${event.id}`,
+    url: `https://www.strava.com/clubs/${opts.clubId}/group_events/${event.id}`,
     categories: "club",
   });
 }

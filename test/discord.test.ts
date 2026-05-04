@@ -17,14 +17,15 @@ function makeOccurrence(
 }
 
 const TEST_CLUB_URL = "https://www.strava.com/clubs/test-club";
+const TEST_CLUB_ID = "9999";
 
 describe("buildEmbed", () => {
   it("builds correct embed for a general event", () => {
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
-    const embed = buildEmbed(weeklyTueFri, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(weeklyTueFri, occ, TEST_CLUB_URL, TEST_CLUB_ID);
 
     assert.equal(embed.title, "Morning Group Run");
-    assert.match(embed.url, /test-club\/group_events\/9990001/);
+    assert.match(embed.url, /clubs\/9999\/group_events\/9990001/);
     assert.equal(embed.description, "Easy pace around the park loop.");
     assert.equal(embed.color, 0x5865f2); // blurple
 
@@ -47,7 +48,7 @@ describe("buildEmbed", () => {
   it("omits Organizer field when organizing_athlete is missing", () => {
     const noOrg = { ...weeklyTueFri, organizing_athlete: undefined };
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
-    const embed = buildEmbed(noOrg, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(noOrg, occ, TEST_CLUB_URL, TEST_CLUB_ID);
     const organizerField = embed.fields.find(
       (f: { name: string }) => f.name === "Organizer",
     );
@@ -56,7 +57,7 @@ describe("buildEmbed", () => {
 
   it("uses coral color for women-only events", () => {
     const occ = makeOccurrence("9990005", "2026-04-29T13:00:00Z");
-    const embed = buildEmbed(womenOnlyWeekly, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(womenOnlyWeekly, occ, TEST_CLUB_URL, TEST_CLUB_ID);
     assert.equal(embed.color, 0xff7f50);
   });
 
@@ -66,7 +67,7 @@ describe("buildEmbed", () => {
       description: "A".repeat(500),
     };
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
-    const embed = buildEmbed(longEvent, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(longEvent, occ, TEST_CLUB_URL, TEST_CLUB_ID);
     assert.ok(embed.description.length <= 410);
     assert.ok(embed.description.endsWith("[...]"));
   });
@@ -77,14 +78,14 @@ describe("buildEmbed", () => {
       description: "Line one\nLine two\nLine three",
     };
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
-    const embed = buildEmbed(nlEvent, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(nlEvent, occ, TEST_CLUB_URL, TEST_CLUB_ID);
     assert.ok(embed.description.includes("\n"));
   });
 
   it("omits Where field when address is empty", () => {
     const noAddr = { ...weeklyTueFri, address: "" };
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
-    const embed = buildEmbed(noAddr, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(noAddr, occ, TEST_CLUB_URL, TEST_CLUB_ID);
     const whereField = embed.fields.find(
       (f: { name: string }) => f.name === "Where",
     );
@@ -93,7 +94,7 @@ describe("buildEmbed", () => {
 
   it("renders coord-only addresses as a clickable Google Maps masked link", () => {
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
-    const embed = buildEmbed(weeklyTueFri, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(weeklyTueFri, occ, TEST_CLUB_URL, TEST_CLUB_ID);
     const whereField = embed.fields.find(
       (f: { name: string }) => f.name === "Where",
     );
@@ -107,7 +108,7 @@ describe("buildEmbed", () => {
   it("leaves human-readable addresses untouched in Where", () => {
     const realAddr = { ...weeklyTueFri, address: "City Stadium" };
     const occ = makeOccurrence("9990001", "2026-04-28T12:45:00Z");
-    const embed = buildEmbed(realAddr, occ, TEST_CLUB_URL);
+    const embed = buildEmbed(realAddr, occ, TEST_CLUB_URL, TEST_CLUB_ID);
     const whereField = embed.fields.find(
       (f: { name: string }) => f.name === "Where",
     );
@@ -118,9 +119,9 @@ describe("buildEmbed", () => {
 
 describe("buildAnnouncementEmbed", () => {
   it("builds announcement for a weekly recurring event", () => {
-    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL, TEST_CLUB_ID);
     assert.equal(embed.title, "New Event: Morning Group Run");
-    assert.match(embed.url, /test-club\/group_events\/9990001/);
+    assert.match(embed.url, /clubs\/9999\/group_events\/9990001/);
     assert.equal(embed.color, 0x57f287); // green
     const scheduleField = embed.fields.find(
       (f: { name: string }) => f.name === "Schedule",
@@ -131,7 +132,7 @@ describe("buildAnnouncementEmbed", () => {
   });
 
   it("builds announcement for a non-recurring event", () => {
-    const embed = buildAnnouncementEmbed(noFrequency, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(noFrequency, TEST_CLUB_URL, TEST_CLUB_ID);
     assert.equal(embed.title, "New Event: One-Off Trail Run");
     const scheduleField = embed.fields.find(
       (f: { name: string }) => f.name === "Schedule",
@@ -140,12 +141,12 @@ describe("buildAnnouncementEmbed", () => {
   });
 
   it("uses coral for women-only announcement", () => {
-    const embed = buildAnnouncementEmbed(womenOnlyWeekly, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(womenOnlyWeekly, TEST_CLUB_URL, TEST_CLUB_ID);
     assert.equal(embed.color, 0xff7f50);
   });
 
   it("includes a When field with the next occurrence as a Discord timestamp", () => {
-    const embed = buildAnnouncementEmbed(noFrequency, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(noFrequency, TEST_CLUB_URL, TEST_CLUB_ID);
     const whenField = embed.fields.find(
       (f: { name: string }) => f.name === "When",
     );
@@ -159,7 +160,7 @@ describe("buildAnnouncementEmbed", () => {
   });
 
   it("weekly events show both Schedule and When (next occurrence)", () => {
-    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL, TEST_CLUB_ID);
     const schedule = embed.fields.find((f) => f.name === "Schedule");
     const when = embed.fields.find((f) => f.name === "When");
     assert.ok(schedule, "Schedule should still be there for recurring events");
@@ -168,13 +169,13 @@ describe("buildAnnouncementEmbed", () => {
 
   it("no When field when upcoming_occurrences is empty", () => {
     const noOcc = { ...noFrequency, upcoming_occurrences: [] };
-    const embed = buildAnnouncementEmbed(noOcc, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(noOcc, TEST_CLUB_URL, TEST_CLUB_ID);
     const when = embed.fields.find((f) => f.name === "When");
     assert.equal(when, undefined);
   });
 
   it("includes Where field when address is present", () => {
-    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL, TEST_CLUB_ID);
     const whereField = embed.fields.find(
       (f: { name: string }) => f.name === "Where",
     );
@@ -182,7 +183,7 @@ describe("buildAnnouncementEmbed", () => {
   });
 
   it("includes Organizer field with the athlete's full name", () => {
-    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(weeklyTueFri, TEST_CLUB_URL, TEST_CLUB_ID);
     const organizerField = embed.fields.find(
       (f: { name: string }) => f.name === "Organizer",
     );
@@ -192,7 +193,7 @@ describe("buildAnnouncementEmbed", () => {
 
   it("omits Organizer field when organizing_athlete is missing", () => {
     const noOrg = { ...weeklyTueFri, organizing_athlete: undefined };
-    const embed = buildAnnouncementEmbed(noOrg, TEST_CLUB_URL);
+    const embed = buildAnnouncementEmbed(noOrg, TEST_CLUB_URL, TEST_CLUB_ID);
     const organizerField = embed.fields.find(
       (f: { name: string }) => f.name === "Organizer",
     );

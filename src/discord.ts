@@ -32,6 +32,7 @@ export function buildEmbed(
   event: EventDetail,
   occurrence: Occurrence,
   clubUrl: string,
+  clubId: string,
 ): DiscordEmbed {
   const unix = Math.floor(occurrence.instant.epochMilliseconds / 1000);
 
@@ -60,7 +61,7 @@ export function buildEmbed(
 
   return {
     title: event.title,
-    url: `${clubUrl}/group_events/${event.id}`,
+    url: `https://www.strava.com/clubs/${clubId}/group_events/${event.id}`,
     description,
     color: event.women_only ? COLOR_WOMEN : COLOR_GENERAL,
     fields,
@@ -86,6 +87,7 @@ function formatSchedule(event: EventDetail): string | null {
 export function buildAnnouncementEmbed(
   event: EventDetail,
   clubUrl: string,
+  clubId: string,
 ): DiscordEmbed {
   let description = event.description ?? "";
   if (description.length > MAX_DESC_LEN) {
@@ -123,7 +125,7 @@ export function buildAnnouncementEmbed(
 
   return {
     title: `New Event: ${event.title}`,
-    url: `${clubUrl}/group_events/${event.id}`,
+    url: `https://www.strava.com/clubs/${clubId}/group_events/${event.id}`,
     description,
     color: event.women_only ? COLOR_WOMEN : COLOR_NEW,
     fields,

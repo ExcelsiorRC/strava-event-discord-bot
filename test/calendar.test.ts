@@ -23,6 +23,7 @@ import {
 
 const FIXED_NOW = "20260426T120000Z";
 const CLUB_URL = "https://www.strava.com/clubs/test-club";
+const CLUB_ID = "9999";
 
 function findLine(block: string, prefix: string): string | undefined {
   return block.split("\r\n").find((l) => l.startsWith(prefix));
@@ -68,6 +69,7 @@ describe("clubEventVEvents — weekly events", () => {
   it("emits one VEVENT with RRULE for a weekly event", () => {
     const blocks = clubEventVEvents(weeklyTueFri, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(blocks.length, 1);
@@ -89,13 +91,14 @@ describe("clubEventVEvents — weekly events", () => {
     assert.equal(findLine(v, "CATEGORIES:"), "CATEGORIES:club");
     assert.equal(
       findLine(v, "URL:"),
-      "URL:https://www.strava.com/clubs/test-club/group_events/9990001",
+      "URL:https://www.strava.com/clubs/9999/group_events/9990001",
     );
   });
 
   it("includes INTERVAL=N when weekly_interval > 1", () => {
     const blocks = clubEventVEvents(biweeklyMonday, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(
@@ -107,6 +110,7 @@ describe("clubEventVEvents — weekly events", () => {
   it("converts coord-only addresses into a Google Maps URL", () => {
     const blocks = clubEventVEvents(weeklyTueFri, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     // 37.77,-122.46 — comma in the URL gets backslash-escaped per RFC 5545
@@ -119,6 +123,7 @@ describe("clubEventVEvents — weekly events", () => {
   it("leaves human-readable addresses unchanged in LOCATION", () => {
     const blocks = clubEventVEvents(biweeklyMonday, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(findLine(blocks[0], "LOCATION:"), "LOCATION:City Stadium");
@@ -127,6 +132,7 @@ describe("clubEventVEvents — weekly events", () => {
   it("women_only weekly events still tagged CATEGORIES:club", () => {
     const blocks = clubEventVEvents(womenOnlyWeekly, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(findLine(blocks[0], "CATEGORIES:"), "CATEGORIES:club");
@@ -135,6 +141,7 @@ describe("clubEventVEvents — weekly events", () => {
   it("prefixes women_only event titles with a marker so they're visible everywhere", () => {
     const blocks = clubEventVEvents(womenOnlyWeekly, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(findLine(blocks[0], "SUMMARY:"), "SUMMARY:🚺 Women's Run");
@@ -143,6 +150,7 @@ describe("clubEventVEvents — weekly events", () => {
   it("does not prefix non-women-only events", () => {
     const blocks = clubEventVEvents(weeklyTueFri, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(findLine(blocks[0], "SUMMARY:"), "SUMMARY:Morning Group Run");
@@ -160,6 +168,7 @@ describe("clubEventVEvents — recency filter", () => {
     };
     const blocks = clubEventVEvents(dawnPatrol, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(blocks.length, 1);
@@ -178,6 +187,7 @@ describe("clubEventVEvents — recency filter", () => {
     };
     const blocks = clubEventVEvents(oldOneOff, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(blocks.length, 0);
@@ -195,6 +205,7 @@ describe("clubEventVEvents — recency filter", () => {
     };
     const blocks = clubEventVEvents(mixed, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(blocks.length, 3);
@@ -205,6 +216,7 @@ describe("clubEventVEvents — one-off events", () => {
   it("emits one VEVENT per upcoming_occurrence with UTC times", () => {
     const blocks = clubEventVEvents(noFrequency, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.equal(blocks.length, 2);
@@ -217,7 +229,7 @@ describe("clubEventVEvents — one-off events", () => {
     assert.equal(findLine(blocks[1], "DTSTART:"), "DTSTART:20260515T170000Z");
     assert.equal(
       findLine(blocks[0], "URL:"),
-      "URL:https://www.strava.com/clubs/test-club/group_events/9990003",
+      "URL:https://www.strava.com/clubs/9999/group_events/9990003",
     );
   });
 
@@ -225,6 +237,7 @@ describe("clubEventVEvents — one-off events", () => {
     const empty = { ...noFrequency, upcoming_occurrences: [] };
     const blocks = clubEventVEvents(empty, {
       clubUrl: CLUB_URL,
+      clubId: CLUB_ID,
       nowUtc: FIXED_NOW,
     });
     assert.deepEqual(blocks, []);
