@@ -193,7 +193,7 @@ export async function runPipeline(
         !options.seedMode && hasFutureOccurrence(detail, now);
       if (announce) {
         const webhookUrl = getWebhookUrl(env, detail, mode);
-        const embed = buildAnnouncementEmbed(detail, env.STRAVA_CLUB_URL);
+        const embed = buildAnnouncementEmbed(detail, env.STRAVA_CLUB_URL, env.STRAVA_CLUB_ID);
         await postToDiscord(webhookUrl, embed);
         const nextIso = detail.upcoming_occurrences[0];
         if (nextIso) {
@@ -254,7 +254,7 @@ export async function runPipeline(
     for (const { event, occurrence } of wouldPost) {
       if (!options.seedMode) {
         const webhookUrl = getWebhookUrl(env, event, mode);
-        const embed = buildEmbed(event, occurrence, env.STRAVA_CLUB_URL);
+        const embed = buildEmbed(event, occurrence, env.STRAVA_CLUB_URL, env.STRAVA_CLUB_ID);
         await postToDiscord(webhookUrl, embed);
       }
       await markPosted(env.EVENT_BOT_STATE, mode, occurrence.eventId, occurrence.isoKey);
@@ -374,7 +374,11 @@ async function handleCalendar(env: Env, url: URL): Promise<Response> {
     if (events.length > 0) vtzChunks.push(LA_VTIMEZONE);
     for (const event of events) {
       veventChunks.push(
-        ...clubEventVEvents(event, { clubUrl: env.STRAVA_CLUB_URL, nowUtc }),
+        ...clubEventVEvents(event, {
+          clubUrl: env.STRAVA_CLUB_URL,
+          clubId: env.STRAVA_CLUB_ID,
+          nowUtc,
+        }),
       );
     }
   }
