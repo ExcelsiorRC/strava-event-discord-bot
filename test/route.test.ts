@@ -318,3 +318,35 @@ describe("GET /calendar.ics", () => {
     assert.match(cc, /max-age=/);
   });
 });
+
+describe("POST /run", () => {
+  it("returns 403 when key is missing", async () => {
+    const kv = new MemoryKV();
+    const res = await worker.fetch(
+      new Request("https://x/run", { method: "POST" }),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 403);
+  });
+
+  it("returns 403 when key is wrong", async () => {
+    const kv = new MemoryKV();
+    const res = await worker.fetch(
+      new Request("https://x/run?key=nope", { method: "POST" }),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 403);
+  });
+
+  it("rejects GET (only POST is allowed)", async () => {
+    const kv = new MemoryKV();
+    const res = await worker.fetch(
+      new Request("https://x/run?key=seed123"),
+      createEnv(kv),
+      ctx,
+    );
+    assert.equal(res.status, 404);
+  });
+});
